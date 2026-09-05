@@ -6,6 +6,7 @@ import { SaveExportSeam } from '../_lib/types/contracts';
 import { FILE_SIZE, RATE_LIMITS } from '../_lib/constants';
 import { ERROR_CODES } from '../_lib/errorCodes';
 import { logError, logInfo, logWarn } from '../_lib/utils/logger';
+import { withUnhandledRouteFailureLogging } from '../_lib/http/withUnhandledRouteFailureLogging';
 import {
   EXPORT_REQUEST_FIELDS,
   toLoggableExportFormat,
@@ -68,7 +69,7 @@ function isArrayOfNonEmptyStrings(value: unknown): value is string[] {
   return Array.isArray(value) && value.every(isNonEmptyString);
 }
 
-export default async function handler(req: any, res: any) {
+async function handler(req: any, res: any) {
   // Correlation id, `X-Request-ID`, CORS, method, and access control, in the
   // one place all four paid POST routes state them. `null` means the response
   // has already been written and there is nothing left for this handler to do.
@@ -215,3 +216,5 @@ export default async function handler(req: any, res: any) {
     });
   }
 }
+
+export default withUnhandledRouteFailureLogging(handler);

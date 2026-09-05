@@ -73,6 +73,15 @@ XAI_API_KEY=your_grok_api_key_here
 # Optional: Audio Generation (uses mocks if not provided)
 ELEVENLABS_API_KEY=your_elevenlabs_api_key_here
 
+# Optional: post `logCritical(...)` alerts (system failures, security issues)
+# to a webhook instead of console-only logging, when NODE_ENV=production —
+# `logCritical` never dispatches beyond the console otherwise, so this has no
+# effect in the development setup below. Accepts any endpoint that takes a
+# Slack-incoming-webhook-shaped `{ text }` POST body, Slack included. A
+# malformed URL is reported (and degrades `/api/health`) rather than silently
+# failing every delivery — see the Health Check section.
+CRITICAL_ALERT_WEBHOOK_URL=https://hooks.slack.com/services/your/webhook/url
+
 # Development settings
 NODE_ENV=development
 ```
@@ -340,6 +349,18 @@ when the rate-limit store or Story Lab job store is misconfigured (an unsupporte
 mode value, or `postgres` mode with no reachable database). Falling back to the
 in-memory/non-durable default is not itself degraded — only an unreachable
 `postgres` mode or an invalid mode value is.
+
+`services.criticalAlerting` reports where `logCritical(...)` calls are actually
+delivered right now: `{ mode: "console" }` by default, or `{ mode: "webhook",
+configured: true }` once `CRITICAL_ALERT_WEBHOOK_URL` is set **and**
+`NODE_ENV=production` (see Environment Setup below) — `logCritical` never
+dispatches beyond the console outside production, so this field reports
+`console` there even with a valid URL configured, rather than claiming a
+destination nothing will call yet. A syntactically invalid URL reports
+`{ mode: "webhook", configured: false }` and **does** flip the overall
+`status` to `degraded` (`503`) — unlike the two durable stores above, this is
+the one case where an unset/console-only default is fine but a broken
+explicit configuration is not.
 
 ### **Story Generation**
 ```http

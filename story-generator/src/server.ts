@@ -106,12 +106,21 @@ if (isMainModule(import.meta.url)) {
   // acting on corrupted state rather than a clean restart. `unhandledRejection`
   // logs without forcing an exit — the same "recoverable" treatment
   // `runApiRoute` already gives a route handler's rejected promise.
+  //
+  // The exit waits on the log promise rather than firing it and moving on:
+  // `logUnhandledProcessFailure` may post to a configured critical-alert
+  // webhook, and a fire-and-forget call here has no guarantee of even
+  // starting that request before `process.exit` tears the process down —
+  // exactly the path this alerting exists for. The wait is still bounded (the
+  // alert sink's own request timeout) and the promise never rejects, so this
+  // cannot turn a crash into a hang.
   process.on('uncaughtException', error => {
-    logUnhandledProcessFailure('uncaughtException', error);
-    process.exit(1);
+    void logUnhandledProcessFailure('uncaughtException', error).finally(() => {
+      process.exit(1);
+    });
   });
   process.on('unhandledRejection', error => {
-    logUnhandledProcessFailure('unhandledRejection', error);
+    void logUnhandledProcessFailure('unhandledRejection', error);
   });
 
   const port = process.env['PORT'] || 8080;

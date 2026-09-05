@@ -7,6 +7,7 @@ import { buildStoryQualityHeuristicReport } from '../_lib/story-lab/evaluation/s
 import { readJsonObjectBody } from '../_lib/http/jsonRequestBody';
 import { stripMarkdownJsonFence } from '../_lib/utils/modelJsonPayload';
 import { logError, logWarn } from '../_lib/utils/logger';
+import { withUnhandledRouteFailureLogging } from '../_lib/http/withUnhandledRouteFailureLogging';
 import { STORY_EVALUATION_LIMITS } from '../../shared/storyBlueprintLimits';
 
 const ENDPOINT = '/api/story-lab/evaluate';
@@ -294,7 +295,7 @@ function normalizeEvaluationRequest(
  * The `Allow` header and the CORS preflight answer come from the preamble's own
  * `['POST', 'OPTIONS']`, which is the list this route already declared.
  */
-export default async function handler(req: any, res: any) {
+async function handler(req: any, res: any) {
   const start = await beginPostRoute(req, res, 'story-lab/evaluate', RATE_LIMITS.STORY_LAB_EVALUATE);
   if (!start) {
     return;
@@ -369,3 +370,5 @@ export default async function handler(req: any, res: any) {
     res.status(502).json(failurePayload);
   }
 }
+
+export default withUnhandledRouteFailureLogging(handler);

@@ -3,6 +3,8 @@ import { applyCorsPolicy } from './_lib/http/corsPolicy';
 import { sendMethodNotAllowed } from './_lib/http/methodNotAllowed';
 import { createRateLimitStoreConfig } from './_lib/middleware/rateLimitStoreConfig';
 import { createStoryLabJobStoreConfig } from './_lib/story-lab/jobs/storyLabJobStoreConfig';
+import { createCriticalAlertSinkConfig } from './_lib/utils/criticalAlertSink';
+import { withUnhandledRouteFailureLogging } from './_lib/http/withUnhandledRouteFailureLogging';
 import { logError } from './_lib/utils/logger';
 
 /** What this route serves, for CORS and for `Allow` alike. */
@@ -23,6 +25,7 @@ type HealthPayload = {
     grok: 'configured' | 'mock';
     rateLimitStore: DurableStoreHealth;
     storyLabJobStore: DurableStoreHealth;
+    criticalAlerting: DurableStoreHealth;
   };
   cors: {
     allowedOrigin: string | null;
@@ -30,17 +33,22 @@ type HealthPayload = {
 };
 
 /**
- * A store is degraded only for a genuine misconfiguration: an unsupported
- * mode value (a typo'd env var) or a `postgres` mode this deployment can't
- * actually reach. Falling back to the in-memory/non-durable default is this
- * app's intentional behavior, not a failure — mirrors `grok: 'mock'` already
- * being a non-error state below.
+ * A dependency is degraded only for a genuine misconfiguration: an unsupported
+ * mode value (a typo'd env var), a `postgres` mode this deployment can't
+ * actually reach, or a `webhook` critical-alert destination that isn't a
+ * usable URL. Falling back to an in-memory/non-durable/console-only default is
+ * this app's intentional behavior, not a failure — mirrors `grok: 'mock'`
+ * already being a non-error state below.
  */
-function isDurableStoreDegraded(store: DurableStoreHealth): boolean {
-  return store.mode === 'unsupported' || (store.mode === 'postgres' && !store.configured);
+function isServiceDependencyDegraded(service: DurableStoreHealth): boolean {
+  return (
+    service.mode === 'unsupported'
+    || (service.mode === 'postgres' && !service.configured)
+    || (service.mode === 'webhook' && !service.configured)
+  );
 }
 
-export default async function handler(req: any, res: any) {
+async function handler(req: any, res: any) {
   const cors = applyCorsPolicy(req, res, {
     methods: HEALTH_ROUTE_METHODS
   });
@@ -64,7 +72,15 @@ export default async function handler(req: any, res: any) {
       mode: storyLabJobStoreConfig.mode,
       configured: storyLabJobStoreConfig.isConfigured()
     };
-    const degraded = isDurableStoreDegraded(rateLimitStore) || isDurableStoreDegraded(storyLabJobStore);
+    const criticalAlertSinkConfig = createCriticalAlertSinkConfig();
+    const criticalAlerting: DurableStoreHealth = {
+      mode: criticalAlertSinkConfig.mode,
+      configured: criticalAlertSinkConfig.configured
+    };
+    const degraded =
+      isServiceDependencyDegraded(rateLimitStore)
+      || isServiceDependencyDegraded(storyLabJobStore)
+      || isServiceDependencyDegraded(criticalAlerting);
 
     const health: HealthPayload = {
       status: degraded ? 'degraded' : 'healthy',
@@ -74,7 +90,8 @@ export default async function handler(req: any, res: any) {
       services: {
         grok: !!process.env['XAI_API_KEY'] ? 'configured' : 'mock',
         rateLimitStore,
-        storyLabJobStore
+        storyLabJobStore,
+        criticalAlerting
       },
       cors: {
         // Report what the CORS policy actually resolved for this request rather
@@ -104,3 +121,5 @@ export default async function handler(req: any, res: any) {
     } satisfies ApiResponse<HealthPayload>);
   }
 }
+
+export default withUnhandledRouteFailureLogging(handler);

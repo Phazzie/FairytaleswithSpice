@@ -16,6 +16,7 @@ import {
   REDACTED_SENSITIVE_TEXT,
   redactSensitiveTextTokens
 } from '../../../shared/sensitiveTextRedaction';
+import { dispatchCriticalAlert, dispatchCriticalAlertAndWait } from './criticalAlertSink';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'critical';
 
@@ -236,10 +237,30 @@ class Logger {
   }
 
   /**
-   * Log critical errors (system failures, data corruption, security issues)
+   * Log critical errors (system failures, data corruption, security issues).
+   * In production this also dispatches to whatever alert destination
+   * `createCriticalAlertSinkConfig` resolves — console-only by default, or a
+   * webhook when `CRITICAL_ALERT_WEBHOOK_URL` is configured (see
+   * `criticalAlertSink.ts`). Fire-and-forget: does not wait for delivery.
    */
   public critical(message: string, error?: any, context?: LogContext, metadata?: Record<string, any>): void {
     this.log('critical', message, context, error, metadata);
+  }
+
+  /**
+   * Same as `critical()`, but awaits delivery before resolving. For the one
+   * call site that cannot risk the process exiting before an alert has had a
+   * chance to leave it: `story-generator/src/server.ts`'s `uncaughtException`
+   * handler calls `process.exit(1)` right after logging, and a fire-and-forget
+   * `critical()` there has no guarantee of even starting the webhook request
+   * before the process ends. Still bounded (the sink's own request timeout)
+   * and still never throws.
+   */
+  public async criticalAndFlush(message: string, error?: any, context?: LogContext, metadata?: Record<string, any>): Promise<void> {
+    const logEntry = this.recordLogEntry('critical', message, context, error, metadata);
+    if (!this.isDevelopment) {
+      await dispatchCriticalAlertAndWait(logEntry);
+    }
   }
 
   /**
@@ -342,6 +363,28 @@ class Logger {
     error?: any,
     metadata?: Record<string, any>
   ): void {
+    const logEntry = this.recordLogEntry(level, message, context, error, metadata);
+
+    // In production, route critical entries to whatever alert destination is
+    // configured (see `criticalAlertSink.ts`) — a webhook when
+    // `CRITICAL_ALERT_WEBHOOK_URL` is set, console-only otherwise.
+    if (!this.isDevelopment && level === 'critical') {
+      dispatchCriticalAlert(logEntry);
+    }
+  }
+
+  /**
+   * The part of `log()` shared with `criticalAndFlush()`: build the redacted
+   * entry, buffer it, and print it to the console. Neither dispatches a
+   * critical alert — each caller decides fire-and-forget vs. awaited.
+   */
+  private recordLogEntry(
+    level: LogLevel,
+    message: string,
+    context?: LogContext,
+    error?: any,
+    metadata?: Record<string, any>
+  ): LogEntry {
     const logEntry: LogEntry = {
       timestamp: new Date().toISOString(),
       level,
@@ -350,25 +393,18 @@ class Logger {
       metadata: redactSensitiveLogData(metadata)
     };
 
-    // Extract error details if present
     if (error) {
       logEntry.error = this.extractErrorDetails(error);
     }
 
-    // Add to buffer
     this.logBuffer.push(logEntry);
     if (this.logBuffer.length > this.maxBufferSize) {
       this.logBuffer.shift();
     }
 
-    // Console output with formatting
     this.outputToConsole(logEntry);
 
-    // In production, you could send to external logging service here
-    // e.g., Sentry, Datadog, CloudWatch, etc.
-    if (!this.isDevelopment && level === 'critical') {
-      this.sendToExternalLogger(logEntry);
-    }
+    return logEntry;
   }
 
   /**
@@ -376,7 +412,7 @@ class Logger {
    */
   private extractErrorDetails(error: any): LogEntry['error'] {
     const details: LogEntry['error'] = {
-      name: error?.name || 'Error',
+      name: typeof error?.name === 'string' && error.name.length > 0 ? error.name : 'Error',
       message: redactSensitiveLogData(error?.message || String(error))
     };
 
@@ -535,23 +571,6 @@ class Logger {
         return console.log;
     }
   }
-
-  /**
-   * Send critical errors to external logging service
-   * (Placeholder - implement with Sentry, Datadog, etc.)
-   */
-  private sendToExternalLogger(entry: LogEntry): void {
-    // TODO: Implement external logging service integration
-    // Example services:
-    // - Sentry
-    // - Datadog
-    // - CloudWatch
-    // - LogRocket
-    // - Rollbar
-    
-    // For now, just ensure it's logged to console
-    console.error('🚨 CRITICAL ERROR - External logging placeholder:', entry);
-  }
 }
 
 // Export singleton instance
@@ -570,8 +589,11 @@ export const logWarn = (message: string, context?: LogContext, metadata?: Record
 export const logError = (message: string, error?: any, context?: LogContext, metadata?: Record<string, any>) => 
   logger.error(message, error, context, metadata);
 
-export const logCritical = (message: string, error?: any, context?: LogContext, metadata?: Record<string, any>) => 
+export const logCritical = (message: string, error?: any, context?: LogContext, metadata?: Record<string, any>) =>
   logger.critical(message, error, context, metadata);
+
+export const logCriticalAndFlush = (message: string, error?: any, context?: LogContext, metadata?: Record<string, any>) =>
+  logger.criticalAndFlush(message, error, context, metadata);
 
 export const logApiError = (apiName: string, error: any, context?: LogContext, requestData?: any) => 
   logger.apiError(apiName, error, context, requestData);

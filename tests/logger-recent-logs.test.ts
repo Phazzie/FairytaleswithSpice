@@ -133,12 +133,29 @@ function testFractionalCountsRoundDown(): void {
   );
 }
 
+// `extractErrorDetails` used to do `error?.name || 'Error'` — a `Symbol` is
+// truthy, so it passed through unconverted rather than falling back, even
+// though `LogEntry['error'].name` is typed as `string`. Found via a crash in
+// `criticalAlertSink.ts`'s webhook sink, which trusted that type: its own
+// name sanitizer's `RegExp.test` throws on a `Symbol` argument, so a single
+// malformed error name could crash critical-alert delivery entirely.
+function testNonStringErrorNameFallsBackToAGenericLabel(): void {
+  logger.clearLogs();
+  withSilencedConsole(() => {
+    logger.error('boom', { name: Symbol('private'), message: 'boom' });
+  });
+
+  const entry = logger.getRecentLogs(1, 'error')[0];
+  assert(entry?.error?.name === 'Error', `a non-string error name should fall back to "Error" (got ${String(entry?.error?.name)})`);
+}
+
 function main(): void {
   testLevelFilterSearchesTheWholeBuffer();
   testCountKeepsTheNewestMatches();
   testUnfilteredReadIsBoundedAndDetached();
   testNonPositiveCountsReturnNothing();
   testFractionalCountsRoundDown();
+  testNonStringErrorNameFallsBackToAGenericLabel();
 
   logger.clearLogs();
   console.log('Logger recent-log tests passed');

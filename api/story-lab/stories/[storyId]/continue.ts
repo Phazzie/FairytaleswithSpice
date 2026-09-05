@@ -14,6 +14,7 @@ import { configuredAuthPort } from '../../../_lib/story-lab/auth/configuredAuthP
 import type { StoryLabProfileStore } from '../../../_lib/story-lab/profile/storyLabProfileStore';
 import { createStoryLabCloudStorage } from '../../../_lib/story-lab/storage/storyLabCloudStorageConfig';
 import { loadAuthenticatedContentBoundaries, resolveContinuationHeatContract } from '../../../_lib/story-lab/contentBoundaries';
+import { withUnhandledRouteFailureLogging } from '../../../_lib/http/withUnhandledRouteFailureLogging';
 
 type ContinueStoryLab = typeof continueStoryLab;
 
@@ -286,4 +287,4 @@ export function createStoryLabContinuationHandler(
   };
 }
 
-export default createStoryLabContinuationHandler();
+export default withUnhandledRouteFailureLogging(createStoryLabContinuationHandler());

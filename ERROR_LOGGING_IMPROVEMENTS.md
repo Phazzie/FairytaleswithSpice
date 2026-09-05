@@ -416,7 +416,10 @@ logger.clearLogs();
 5. **System health** - Critical errors highlighted
 
 ### For Production:
-1. **External logging ready** - Placeholder for Sentry/Datadog
+1. **Critical alert webhook** - `logCritical(...)` posts to `CRITICAL_ALERT_WEBHOOK_URL`
+   when configured (any Slack-incoming-webhook-shaped endpoint), console-only
+   otherwise. A full Sentry/Datadog SDK integration is still a future step —
+   see `api/_lib/utils/criticalAlertSink.ts`.
 2. **Sensitive data protected** - Auto-sanitization
 3. **Minimal noise** - Debug logs only in development
 4. **Structured data** - Easy to parse/analyze
@@ -444,9 +447,9 @@ logger.clearLogs();
 - [ ] Add IP address logging for security
 
 ### Long-term (Future):
-- [ ] Integrate external logging service (Sentry/Datadog/CloudWatch)
+- [x] Wire up a critical-error alert destination — `CRITICAL_ALERT_WEBHOOK_URL` (see above). **Non-claim**: verified against a fake `postFn` in tests only, not against a real webhook endpoint (Slack or otherwise) — there is no credential-safe way to do that from this environment. Delivery against a real destination is unverified until one is exercised, live or via a smoke test that can safely skip without credentials.
+- [ ] Integrate a full external logging service (Sentry/Datadog/CloudWatch)
 - [ ] Add log aggregation dashboard
-- [ ] Set up alerting for critical errors
 - [ ] Implement log rotation/archival
 - [ ] Add request/response body logging (sanitized)
 - [ ] Create error analytics dashboard
