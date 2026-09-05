@@ -447,7 +447,7 @@ logger.clearLogs();
 - [ ] Add IP address logging for security
 
 ### Long-term (Future):
-- [x] Set up alerting for critical errors — `CRITICAL_ALERT_WEBHOOK_URL` (see above)
+- [x] Wire up a critical-error alert destination — `CRITICAL_ALERT_WEBHOOK_URL` (see above). **Non-claim**: verified against a fake `postFn` in tests only, not against a real webhook endpoint (Slack or otherwise) — there is no credential-safe way to do that from this environment. Delivery against a real destination is unverified until one is exercised, live or via a smoke test that can safely skip without credentials.
 - [ ] Integrate a full external logging service (Sentry/Datadog/CloudWatch)
 - [ ] Add log aggregation dashboard
 - [ ] Implement log rotation/archival

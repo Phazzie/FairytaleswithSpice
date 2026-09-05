@@ -278,6 +278,35 @@ function testFormatCriticalAlertTextSanitizesUnsafeErrorNames(): void {
   assert(unsafe.includes('Error type: Error'), 'an unsafe error name should fall back to a generic label');
 }
 
+// P2 (third re-review): `extractErrorDetails` in `logger.ts` used to do
+// `error?.name || 'Error'` — a `Symbol` is truthy, so it passed through
+// unconverted, and `RegExp.test`'s implicit `ToString` throws on a `Symbol`.
+// That meant `formatCriticalAlertText` — called *before*
+// `WebhookCriticalAlertSink.sendAndWait`'s own `try` block — could throw
+// synchronously, defeating this whole sink's "never throws" contract for
+// exactly the unanticipated-error case it exists to alert on.
+function testSanitizeErrorNameNeverThrowsOnANonStringName(): void {
+  const entry = sampleEntry({ error: { name: Symbol('private') as unknown as string, message: 'boom' } });
+
+  const text = formatCriticalAlertText(entry);
+
+  assert(text.includes('Error type: Error'), 'a non-string error name should fall back to a generic label, not throw');
+}
+
+async function testWebhookSinkNeverThrowsOnANonStringErrorName(): Promise<void> {
+  const sink = new WebhookCriticalAlertSink({
+    webhookUrl: 'https://hooks.example.com/alert',
+    postFn: async () => ({ status: 200 })
+  });
+  const entry = sampleEntry({ error: { name: Symbol('private') as unknown as string, message: 'boom' } });
+
+  // Must not throw synchronously, and the returned promise must not reject —
+  // either would turn an unrelated malformed error into a second crash
+  // inside the crash guard that called this sink.
+  sink.send(entry);
+  await sink.sendAndWait(entry);
+}
+
 function testFormatCriticalAlertTextOmitsMissingFields(): void {
   const text = formatCriticalAlertText({
     timestamp: '2026-09-05T00:00:00.000Z',
@@ -338,6 +367,8 @@ async function main(): Promise<void> {
   await testConsoleSinkAndWaitResolvesImmediately();
   testFormatCriticalAlertTextStripsQueryStringFromEndpoint();
   testFormatCriticalAlertTextSanitizesUnsafeErrorNames();
+  testSanitizeErrorNameNeverThrowsOnANonStringName();
+  await testWebhookSinkNeverThrowsOnANonStringErrorName();
   testFormatCriticalAlertTextOmitsMissingFields();
   await testDispatchCriticalAlertRoutesThroughTheResolvedSink();
   await testDispatchCriticalAlertAndWaitResolvesOnlyAfterDelivery();

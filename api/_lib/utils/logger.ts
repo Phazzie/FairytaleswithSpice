@@ -412,7 +412,7 @@ class Logger {
    */
   private extractErrorDetails(error: any): LogEntry['error'] {
     const details: LogEntry['error'] = {
-      name: error?.name || 'Error',
+      name: typeof error?.name === 'string' && error.name.length > 0 ? error.name : 'Error',
       message: redactSensitiveLogData(error?.message || String(error))
     };
 

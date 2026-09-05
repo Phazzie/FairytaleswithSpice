@@ -22,6 +22,7 @@ class FakeResponse {
   body: unknown = null;
   ended: string | undefined;
   endCalls = 0;
+  headers: Record<string, string> = {};
 
   status(code: number): this {
     this.statusCode = code;
@@ -33,8 +34,11 @@ class FakeResponse {
     this.headersSent = true;
   }
 
-  setHeader(): void {
-    // no-op
+  setHeader(name: string, value: string): void {
+    if (this.headersSent) {
+      throw new Error('Cannot set headers after they are sent to the client');
+    }
+    this.headers[name] = value;
   }
 
   end(payload?: string): void {
@@ -44,7 +48,7 @@ class FakeResponse {
   }
 }
 
-function createRequest(overrides: Partial<{ method: string; url: string }> = {}): any {
+function createRequest(overrides: Partial<{ method: string; url: string; headers: Record<string, string> }> = {}): any {
   return { method: 'POST', url: '/api/example', headers: {}, ...overrides };
 }
 
@@ -127,6 +131,42 @@ async function testClosesTheConnectionOnAMidStreamEscape(): Promise<void> {
   assert.equal(res.endCalls, 1, 'a mid-stream escape should close the connection exactly once');
 }
 
+// A caller with no incoming `X-Request-ID` used to get a 500 with no
+// `X-Request-ID` header at all (the id was read, and possibly minted, only
+// *after* the response was already committed), while a different, unreturned
+// id was the one that showed up in the critical log/webhook — leaving no way
+// for the caller to quote the diagnostic that identifies their own failure.
+async function testSettlesAndEchoesTheCorrelationIdBeforeAnswering(): Promise<void> {
+  logger.clearLogs();
+  const res = new FakeResponse();
+  const wrapped = withUnhandledRouteFailureLogging(() => {
+    throw new Error('boom');
+  });
+
+  await wrapped(createRequest(), res);
+
+  const echoed = res.headers['X-Request-ID'];
+  assert.ok(typeof echoed === 'string' && echoed.length > 0, 'a minted correlation id should be echoed via X-Request-ID');
+
+  const critical = logger.getRecentLogs(10, 'critical').find(entry => entry.message === 'Unhandled API route failure');
+  assert.equal(critical?.context?.requestId, echoed, 'the alert should carry the exact id the caller was given, not a different one');
+}
+
+// A caller's own supplied id must survive unchanged and still be echoed back.
+async function testEchoesACallerSuppliedCorrelationId(): Promise<void> {
+  logger.clearLogs();
+  const res = new FakeResponse();
+  const wrapped = withUnhandledRouteFailureLogging(() => {
+    throw new Error('boom');
+  });
+
+  await wrapped(createRequest({ headers: { 'x-request-id': 'req_caller_supplied' } }), res);
+
+  assert.equal(res.headers['X-Request-ID'], 'req_caller_supplied');
+  const critical = logger.getRecentLogs(10, 'critical').find(entry => entry.message === 'Unhandled API route failure');
+  assert.equal(critical?.context?.requestId, 'req_caller_supplied');
+}
+
 async function testLoggedContextCarriesRequestMethodAndPath(): Promise<void> {
   logger.clearLogs();
   const res = new FakeResponse();
@@ -147,6 +187,8 @@ async function main(): Promise<void> {
   await testLogsAndAnswers500OnARejectedPromise();
   await testNeverWritesASecondResponseOnceHeadersAreSent();
   await testClosesTheConnectionOnAMidStreamEscape();
+  await testSettlesAndEchoesTheCorrelationIdBeforeAnswering();
+  await testEchoesACallerSuppliedCorrelationId();
   await testLoggedContextCarriesRequestMethodAndPath();
 
   logger.clearLogs();

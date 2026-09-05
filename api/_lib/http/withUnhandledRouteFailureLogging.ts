@@ -30,9 +30,12 @@
 // process" gap already fixed for the process-crash guard, and a mid-stream
 // escape (an SSE route that already sent headers) was logged but left the
 // connection open until the platform's own function timeout. Both are fixed
-// below.
+// below. A third re-review found the correlation id was read (and possibly
+// minted) only after the 500 was already committed, so the id the critical
+// log and webhook carried was never the one — or was never even the same
+// value — echoed back to the caller: also fixed below.
 import { logCriticalAndFlush } from '../utils/logger';
-import { readRequestCorrelationId } from './requestCorrelationId';
+import { readRequestCorrelationId, settleRequestCorrelationId } from './requestCorrelationId';
 
 export type ApiRouteHandler = (req: any, res: any) => unknown;
 
@@ -82,11 +85,26 @@ function sendGenericFailureEnvelope(res: any): void {
  * `export default` handler returns settles, regardless of whether a response
  * was already sent; a fire-and-forget alert here has no such guarantee and
  * may never leave the invocation before it is frozen or torn down.
+ *
+ * The correlation id is settled — minted if the caller sent none, and echoed
+ * back via `X-Request-ID` — *before* the response is sent, and that exact
+ * value is reused for the critical log/webhook. Settling after the response
+ * was already committed (the original shape here) meant a caller with no
+ * incoming id got a 500 with no `X-Request-ID` header at all, while a
+ * different, unreturned id was the one that showed up in the alert — the
+ * caller had no way to quote the diagnostic that identifies their own
+ * failure. Skipped when headers are already sent (a mid-stream escape):
+ * `res.setHeader` throws past that point, and there is no header left to
+ * echo onto in any case.
  */
 async function handleEscapedFailure(req: any, res: any, error: unknown): Promise<void> {
+  const requestId = res?.headersSent
+    ? readRequestCorrelationId(req)
+    : settleRequestCorrelationId(req, res);
+
   sendGenericFailureEnvelope(res);
   await logCriticalAndFlush('Unhandled API route failure', error, {
-    requestId: readRequestCorrelationId(req),
+    requestId,
     endpoint: readRequestPath(req),
     method: typeof req?.method === 'string' ? req.method : undefined
   });

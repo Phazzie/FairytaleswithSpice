@@ -185,11 +185,23 @@ function sanitizeEndpointForAlert(endpoint: string): string {
  * error classes) is safe to forward; anything else is replaced with a
  * generic label rather than risking the same disclosure this function
  * already refuses for `error.message`.
+ *
+ * Takes `unknown`, not `string`, on purpose: `LogEntry['error'] .name` is
+ * typed as `string`, but `extractErrorDetails` only guarantees that as of its
+ * own latest fix — a caller further upstream that constructs a `LogEntry` by
+ * hand, or a future regression there, could still hand this a non-string
+ * value (a `Symbol`, say). `RegExp.test` coerces its argument with an
+ * implicit `ToString` that *throws* for a `Symbol`, which previously meant a
+ * single malformed error name could crash `formatCriticalAlertText` before
+ * `WebhookCriticalAlertSink.sendAndWait` ever reached its own `try` block —
+ * defeating this whole sink's "never throws" contract for the exact
+ * unanticipated-bug case it exists to alert on. The explicit `typeof` guard
+ * below means no input can ever reach the regex except a genuine string.
  */
 const SAFE_ERROR_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_.]{0,63}$/;
 
-function sanitizeErrorNameForAlert(name: string): string {
-  return SAFE_ERROR_NAME_PATTERN.test(name) ? name : 'Error';
+function sanitizeErrorNameForAlert(name: unknown): string {
+  return typeof name === 'string' && SAFE_ERROR_NAME_PATTERN.test(name) ? name : 'Error';
 }
 
 /**
