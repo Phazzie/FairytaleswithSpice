@@ -10,6 +10,11 @@ import {
   toLoggableThemes
 } from '../api/_lib/utils/loggableRequestParameters';
 import { STORY_LAB_THEME_SEED_IDS } from '../shared/storyLabThemeSeeds';
+import {
+  BEARER_ALPHABETIC_CREDENTIAL_MIN_LENGTH,
+  REDACTED_SENSITIVE_TEXT
+} from '../shared/sensitiveTextRedaction';
+import { API_KEY_MINIMUM_LENGTH } from '../api/_lib/middleware/security';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -135,6 +140,758 @@ for (const delimiter of ['=', ':', '/', '+', '"', ',', '(']) {
   assert(
     !delimited.note.includes('abc123def456'),
     `a Bearer credential introduced by "${delimiter}" should be redacted`
+  );
+}
+
+// `bearer` is the scheme keyword and an ordinary noun, and this is a
+// dark-fantasy story generator: a bearer of a seal, an oath, or bad news
+// reaches the logger through prompts, story excerpts and error messages. The
+// scheme keyword alone used to be enough to swallow the following word AND
+// rewrite the noun to `Bearer`, so the operator reading a failed generation
+// lost the word and was told a credential had been there instead. Redaction
+// that cries wolf is redaction an operator learns to read past.
+for (const sentence of [
+  'a standard bearer led the march',
+  'the bearer of bad news',
+  'The bearer must not be named.',
+  'Bearer of the seal walked in',
+  'news. Bearer of the seal walked in',
+  'He was a bearer, and he ran.',
+  // The shapes story content actually takes on its way to the logger. This
+  // module is handed `htmlContent` and `storyText` above, so a credential
+  // introducer that also abuts narrative prose reintroduces the whole defect
+  // on the most common inputs: HTML tags, quoted dialogue, parentheticals and
+  // markdown table cells all put a punctuation mark immediately before a
+  // capitalized noun.
+  '<p>Bearer of the seal walked in</p>',
+  '"Bearer of the seal," he said',
+  "'Bearer of bad news,' she whispered",
+  '(Bearer of the oath) stepped forward',
+  '| Bearer of the seal | a row |',
+  '[Bearer of the seal] stepped forward',
+  'context: The bearer of bad news',
+  // The lookback past `header` is exactly one word and only past that suffix.
+  // An unbounded scan for an auth field name anywhere before the separator
+  // would destroy these.
+  'The authorization ceremony: Bearer of the seal',
+  'token of my esteem: Bearer of bad news',
+  'header: Bearer of the seal',
+  // Eight letters is not enough to make a word a credential. These are the
+  // verbs that actually follow the noun in story prose, and an eight-character
+  // floor destroyed every one of them.
+  'the bearer announced victory',
+  'the bearer delivered the news',
+  'the bearer whispered a warning',
+  'the bearer returned at dawn',
+  'the bearer answered plainly',
+  // A hyphen is ordinary English, not proof of a credential. Reading every
+  // non-letter as credential-only destroyed this whole class.
+  'the bearer re-entered the chamber',
+  'the bearer self-appointed by the court',
+  'the bearer half-turned away',
+  'the bearer well-known to us',
+  'the bearer mother-in-law arrived',
+  // A slash joins two halves of one expression exactly as a hyphen does. Adding
+  // the hyphen fixed the instance and left the class, and a later review found
+  // the rest of it.
+  'the bearer and/or recipient must sign',
+  'the bearer his/her representative appointed',
+  'the bearer either/or clause applies',
+  // The full stop that ends the sentence belongs to the sentence. `.` is a
+  // `b64token` character, so the token scan took it and every ordinary sentence
+  // ending on the word after the noun was credential-shaped on that one
+  // character -- losing the word *and* the mark that ended the line.
+  'the bearer returned.',
+  'the bearer of.',
+  'the bearer announced.',
+  'the bearer re-entered.',
+  'the bearer of the seal walked in. The bearer left.',
+  'the bearer of bad news...',
+  // A run that is nothing but marks has no word to take a shape from, so only
+  // its length speaks: an ellipsis after the noun is prose. The line that used
+  // to sit here asserted `Authorization: Bearer ...` was prose too, and that
+  // claim was the hole -- sixteen periods is a key `API_KEY_CREDENTIAL_GRAMMAR`
+  // accepts, and it was logged in the clear. Both directions are pinned below.
+  'the bearer ... walked away',
+  'the bearer .. hesitated',
+  // Markdown is how story content spells emphasis, and `_` and `~` are
+  // `b64token` characters, so a balanced pair around an ordinary word made it
+  // carry marks no English word carries. Only balanced pairs: `_abcdef` and
+  // `sk_live_abcdef` are still credentials, asserted below.
+  // A value that has already closed is not padding around the next one. A
+  // non-empty value stops the lookback on its own characters -- `authorization:
+  // "abc" Bearer of the seal` was always prose -- and an empty one now stops it
+  // too, instead of letting the walk read through to the separator behind it.
+  'authorization: "" Bearer of the seal',
+  "authorization: '' Bearer of the seal",
+  'authorization: "" the bearer announced victory',
+  'authorization: "abc" Bearer of the seal',
+  // The same closed empty value once the diagnostic is embedded in a string,
+  // which is the shape this module is actually handed. The pair is still there
+  // with its escaping between it -- `\\"\\"` at depth 1, `\\\\\\"\\\\\\"` at
+  // depth 2 -- and comparing each quote against the character immediately
+  // before it saw only padding and walked through to the separator behind. The
+  // depth-0 fix was live in no serialized log until this.
+  '{"message":"authorization: \\"\\" Bearer of the seal"}',
+  '{"message":"authorization: \\\\\\"\\\\\\" Bearer of the seal"}',
+  'payload="{\\"authorization\\":\\"\\" Bearer of the seal}"',
+  'the bearer _returned_ to court',
+  'the bearer __of__ the seal',
+  'the bearer ~~returned~~ at dawn',
+  'the bearer _re-entered_ the chamber',
+  'the bearer _returned_.',
+  // A separator is not a header. These are a story title, a chapter heading
+  // this app generates, and ordinary structured prose -- each puts `:` or `=`
+  // immediately before the noun, and each was destroyed until the field name
+  // was required as well as the separator.
+  'Title: Bearer of the seal',
+  'Chapter 3: Bearer of the Oath',
+  'role=bearer of bad news',
+  'He said: "Bearer of the seal"',
+  'note: bearer of bad news',
+  // Reading a serialized array's field context does not make the bracket
+  // sufficient on its own. Each of these puts the noun inside `[...]`, and the
+  // gate that reads the field name is the same one, so each stays prose.
+  'Title: ["Bearer of the seal", "Bearer of bad news"]',
+  'Chapter 3: ["Bearer of the Oath"]',
+  'The authorization ceremony: ["Bearer of the seal"]',
+  'header: ["Bearer of the seal"]'
+]) {
+  const preserved = redactSensitiveLogData({ note: sentence }) as Record<string, string>;
+  assert(
+    preserved.note === sentence,
+    `prose using "bearer" as a word must survive redaction unchanged: ${sentence}`
+  );
+}
+
+// The other arm, and the one that keeps the repair fail-closed. A credential
+// short enough AND alphabetic enough to pass for a word is still redacted when
+// it sits where a header puts it -- which is the counterexample that withdrew
+// the first attempt at this repair in #313, where a `Bearer abcdef` accepted by
+// `authenticateRequest` survived a shape check in the clear.
+for (const line of [
+  'Authorization: Bearer abcdef',
+  'Authorization:Bearer abc',
+  'Authorization=Bearer abcdef',
+  '{"authorization": "Bearer abcdef"}',
+  'x-api-key: Bearer abcdef',
+  'AUTHORIZATION:Bearer abcdef',
+  // A provider's error text labels the header in words rather than naming it,
+  // and an error message often carries a JSON payload that has already been
+  // escaped once. Both put explicit authorization context around the
+  // credential, and both reached the logger in the clear until the walk
+  // learned to read past `header` and past `\`.
+  'Invalid Authorization header: Bearer abcdef',
+  'Invalid authorization-header: Bearer abcdef',
+  'rejected the Authorization headers: Bearer abcdef',
+  'payload="{\\"authorization\\":\\"Bearer abcdef\\"}"',
+  // A repeated header serializes as `string[]` -- the request contracts in this
+  // repository type it that way -- and the walk back from the scheme reaches
+  // the `[` or the `,` between elements rather than the field's `:`.
+  '{"authorization":["Bearer abcdef"]}',
+  '{"x-api-key":["Bearer abcdef"]}',
+  'payload="{\\"authorization\\":[\\"Bearer abcdef\\"]}"',
+  'Bearer a1b2c3',
+  'Bearer k+y/z=',
+  'Bearer xai-secret-key-123',
+  'Bearer eyJhbGciOiJIUzI1NiJ9.eyJhIjoxfQ.sig',
+  `Bearer ${'k'.repeat(API_KEY_MINIMUM_LENGTH)}`
+]) {
+  const hidden = redactSensitiveLogData({ note: line }) as Record<string, string>;
+  assert(
+    hidden.note.includes(REDACTED_SENSITIVE_TEXT),
+    `a Bearer credential must be redacted, not read as prose: ${line}`
+  );
+}
+
+// The boundary the two arms meet at, asserted in both directions so neither can
+// be widened without the suite noticing. A purely alphabetic run of
+// `API_KEY_MINIMUM_LENGTH` characters is redacted on length alone with no
+// introducer in sight; one character shorter is a word.
+const floorCredential = redactSensitiveLogData({
+  note: `sent Bearer ${'k'.repeat(API_KEY_MINIMUM_LENGTH)} upstream`
+}) as Record<string, string>;
+assert(
+  !floorCredential.note.includes('k'.repeat(API_KEY_MINIMUM_LENGTH)),
+  'a configured-length key is redacted on its length alone, with no introducer present'
+);
+const belowFloor = redactSensitiveLogData({
+  note: `sent Bearer ${'k'.repeat(API_KEY_MINIMUM_LENGTH - 1)} upstream`
+}) as Record<string, string>;
+assert(
+  belowFloor.note.includes('k'.repeat(API_KEY_MINIMUM_LENGTH - 1)),
+  'one character below the configured floor is a word, not a credential'
+);
+
+// Giving the full stop back to the sentence must not give any of the credential
+// back with it, and it must not cost the credential its punctuation either --
+// the same trade the URL pass makes further down, where a comma after a link
+// belongs to the sentence. Only a *trailing* dot is sentence punctuation: an
+// interior one is what makes `ab.cd` and a JWT's three parts credentials at any
+// length, and the other `b64token` marks are not sentence punctuation at all.
+for (const [line, expected] of [
+  ['sent Bearer abc123def456. Then it failed', 'sent Bearer [REDACTED]. Then it failed'],
+  ['Authorization: Bearer abcdef.', 'Authorization: Bearer [REDACTED].'],
+  ['Bearer ab.cd', 'Bearer [REDACTED]'],
+  ['Bearer eyJhbGciOiJIUzI1NiJ9.eyJhIjoxfQ.sig', 'Bearer [REDACTED]'],
+  ['Bearer abcdef/', 'Bearer [REDACTED]'],
+  ['Bearer abcdef-', 'Bearer [REDACTED]']
+] as const) {
+  const stopped = redactSensitiveLogData({ note: line }) as Record<string, string>;
+  assert(
+    stopped.note === expected,
+    `sentence punctuation is the sentence's, the rest of the run is the credential's: ${line} -> ${stopped.note}`
+  );
+}
+
+// The header arm reaches a run of marks too, and the redaction must consume it
+// rather than hand it back as punctuation -- printing the marks beside their own
+// `[REDACTED]` would put the credential back on the line it was removed from.
+for (const marked of [
+  `Authorization: Bearer ${'.'.repeat(API_KEY_MINIMUM_LENGTH)}`,
+  'Authorization: Bearer ...'
+]) {
+  const hidden = redactSensitiveLogData({ note: marked }) as Record<string, string>;
+  assert(
+    hidden.note === `Authorization: Bearer ${REDACTED_SENSITIVE_TEXT}`,
+    `a run of marks in a header is consumed by its redaction: ${marked} -> ${hidden.note}`
+  );
+}
+
+// Stopping the lookback at a closed empty value costs exactly one band, and it
+// is the band the residual already names: a credential written after one, short
+// and alphabetic enough to have no shape, is no longer reached by the header
+// arm. Asserted in both directions so the trade is visible rather than implied
+// -- anything with a shape is still caught there, at any length.
+const afterClosedEmptyValue = redactSensitiveLogData({
+  note: 'Authorization: "" Bearer abcdef'
+}) as Record<string, string>;
+assert(
+  afterClosedEmptyValue.note.includes('abcdef'),
+  `a closed empty value ends the header context: ${afterClosedEmptyValue.note}`
+);
+for (const stillCaught of [
+  'Authorization: "" Bearer abc123def456',
+  'Authorization: "" Bearer xai-secret-key-123',
+  `Authorization: "" Bearer ${'k'.repeat(API_KEY_MINIMUM_LENGTH)}`,
+  // Two *different* quotes side by side are a value quoted inside another, not
+  // a closed empty one -- so the header arm must still reach through them.
+  `authorization: "'Bearer abcdef'"`,
+  `authorization: '"Bearer abcdef"'`
+]) {
+  const hidden = redactSensitiveLogData({ note: stillCaught }) as Record<string, string>;
+  assert(
+    hidden.note.includes(REDACTED_SENSITIVE_TEXT),
+    `the shape arm still reaches past a closed empty value: ${stillCaught} -> ${hidden.note}`
+  );
+}
+
+// The one guarantee no trimming may reach past, and the reason the shape is
+// read off the trimmed body while the length is measured on the whole run.
+// `API_KEY_CREDENTIAL_GRAMMAR` counts `.`, `_` and `~` inside a token body, so
+// a run of `API_KEY_MINIMUM_LENGTH` characters is a value `authenticateRequest`
+// can accept whatever those characters are -- `abcdefghijklmno.` is fifteen
+// letters and a stop, and it is a configured credential. Trimming the marks out
+// of the *length* as well as the shape logged exactly that in the clear.
+for (const atFloor of [
+  `${'k'.repeat(API_KEY_MINIMUM_LENGTH - 1)}.`,
+  `_${'k'.repeat(API_KEY_MINIMUM_LENGTH - 2)}_`,
+  `~${'k'.repeat(API_KEY_MINIMUM_LENGTH - 2)}~`,
+  `${'k'.repeat(API_KEY_MINIMUM_LENGTH - 3)}...`,
+  'k'.repeat(API_KEY_MINIMUM_LENGTH),
+  // "Whatever its shape" includes having no shape at all. A run of periods is
+  // a key the grammar accepts, and the revision that returned early on an
+  // emptied body logged it in the clear -- in a header context as well as bare.
+  '.'.repeat(API_KEY_MINIMUM_LENGTH),
+  '~'.repeat(API_KEY_MINIMUM_LENGTH),
+  '_'.repeat(API_KEY_MINIMUM_LENGTH)
+]) {
+  assert(atFloor.length === API_KEY_MINIMUM_LENGTH, `test setup: ${atFloor} is not at the floor`);
+  const hidden = redactSensitiveLogData({
+    note: `request failed with Bearer ${atFloor}`
+  }) as Record<string, string>;
+  // Asserted on the whole line rather than on the marker being present. The
+  // weaker `includes` form passed while the redaction consumed only part of the
+  // run and printed the rest beside its own `[REDACTED]` -- `a...............`
+  // is a value `authenticateRequest` accepts, and fifteen of its sixteen
+  // characters were reaching the log. Redacting a credential and consuming it
+  // are two questions, and only this form asks the second.
+  assert(
+    hidden.note === `request failed with Bearer ${REDACTED_SENSITIVE_TEXT}`,
+    `a run at the floor is redacted *and* consumed, whatever its shape: ${atFloor} -> ${hidden.note}`
+  );
+}
+
+// The same defect stated as the reviewer found it: a minimally recoverable
+// accepted key, one credential character and fifteen stops. The stops are what
+// carry it to the floor, so they are the credential's rather than the
+// sentence's, and a header context must not hand them back either.
+for (const line of [
+  `request failed with Bearer a${'.'.repeat(API_KEY_MINIMUM_LENGTH - 1)}`,
+  `Authorization: Bearer a${'.'.repeat(API_KEY_MINIMUM_LENGTH - 1)}`,
+  `request failed with Bearer ${'k'.repeat(API_KEY_MINIMUM_LENGTH - 1)}.`,
+  `request failed with Bearer ${'k'.repeat(API_KEY_MINIMUM_LENGTH - 3)}...`
+]) {
+  const hidden = redactSensitiveLogData({ note: line }) as Record<string, string>;
+  assert(
+    !/\.$/.test(hidden.note),
+    `a stop that carries a run to the floor is the credential's, not the sentence's: ${line} -> ${hidden.note}`
+  );
+}
+
+// The joiners take the floor with them, and that is the whole cost of sparing
+// `re-entered` and `and/or`. A run joined by one interior hyphen or slash is
+// word-shaped, so it is preserved below the floor exactly as a plain-letters
+// run is -- the residual `SECURITY_IMPLEMENTATION_GUIDE.md` Note 7 records, in
+// the two spellings it now records it in. Pinned in both directions so the
+// documented rule and the code cannot drift: the same run reaching the floor is
+// a credential again, which is what keeps a configured entry out of the band.
+for (const joined of ['abc/def', 'abc-def']) {
+  const spared = redactSensitiveLogData({ note: `sent Bearer ${joined} upstream` }) as Record<string, string>;
+  assert(
+    spared.note.includes(joined),
+    `a run joined by one interior joiner is a word below the floor: ${joined} -> ${spared.note}`
+  );
+  const atFloor = `${joined}/${'k'.repeat(API_KEY_MINIMUM_LENGTH - joined.length - 1)}`;
+  const hidden = redactSensitiveLogData({ note: `sent Bearer ${atFloor} upstream` }) as Record<string, string>;
+  assert(
+    atFloor.length === API_KEY_MINIMUM_LENGTH && !hidden.note.includes(atFloor),
+    `the same shape at the configured floor is a credential again: ${atFloor} -> ${hidden.note}`
+  );
+}
+
+// The load-bearing tie: the redactor's alphabetic floor IS the floor
+// `authenticateRequest` puts on a configured entry. If someone lowers the auth
+// contract without lowering this, a configurable key becomes a value the logger
+// reads as prose. `shared/` cannot import server middleware (it is bundled into
+// the browser app), so the constant is duplicated and pinned here instead.
+//
+// Asserted as an equality between the two constants rather than against a
+// literal 16: the invariant is that they are the same number, not that the
+// number is that one. A literal would also fail on a deliberate coordinated
+// change, which is the one case here that is not a defect.
+assert(
+  BEARER_ALPHABETIC_CREDENTIAL_MIN_LENGTH === API_KEY_MINIMUM_LENGTH,
+  'the bearer redactor duplicates this floor as BEARER_ALPHABETIC_CREDENTIAL_MIN_LENGTH; keep them equal'
+);
+// A single non-letter is enough at any length -- this is the arm that catches
+// every provider token, none of which is purely alphabetic.
+// Sparing hyphenated words must not spare a hyphenated credential: a leading or
+// doubled hyphen is not a word shape, and a digit or `_` anywhere still settles
+// it. Every provider token this app holds fails the word test on one of these.
+for (const shortButShaped of [
+  'Bearer a1b2c3', 'Bearer k+y/z=', 'Bearer ab.cd',
+  'Bearer xai-secret-key-123', 'Bearer sk_live_abcdef',
+  'Bearer -abcdef', 'Bearer ab--cd', 'Bearer abcdef-',
+  'Bearer /abcdef', 'Bearer ab//cd', 'Bearer abcdef/',
+  // Only a *balanced* pair of emphasis marks is Markdown. One end alone is a
+  // leading mark exactly as `-abcdef` is, and a provider token wears its
+  // underscores on the inside.
+  'Bearer _abcdef', 'Bearer abcdef_', 'Bearer ~abcdef', 'Bearer sk_live_abcdef', 'Bearer _a_b_',
+  // And only the marks Markdown actually uses for inline emphasis. A hyphen
+  // wraps nothing in Markdown -- it opens a list or rules a line -- so a run
+  // wearing one at each end is a credential, not an emphasized word.
+  'Bearer -abcdef-'
+]) {
+  const shaped = redactSensitiveLogData({ note: shortButShaped }) as Record<string, string>;
+  assert(
+    shaped.note.includes(REDACTED_SENSITIVE_TEXT),
+    `a short run carrying a non-letter is a credential at any length: ${shortButShaped}`
+  );
+}
+
+// Every element of a repeated header, not just the one the walk can reach. The
+// loop above asserts only that a redaction happened somewhere in the line, so
+// an array whose first element was hidden and whose second was logged in the
+// clear would pass it -- which is exactly the shape this repair is about. The
+// field context belongs to the array, so each element must lose its credential,
+// whatever position it sits in.
+for (const serialized of [
+  '{"authorization":["Bearer abcdef","Bearer ghijkl"]}',
+  '{"authorization": ["Bearer abcdef", "Bearer ghijkl"]}',
+  '{"authorization":["Basic xyz","Bearer abcdef","Bearer ghijkl"]}',
+  // A sibling element may hold a `]` -- `Digest roles=[admin]` is a real header
+  // value. Ending the array at the first `]` closed the span inside element one
+  // and emitted everything after it in the clear. The credential cannot carry a
+  // `]`, which is what made the first reading look safe; the element around it
+  // can.
+  '{"authorization":["Digest roles=[admin]","Bearer abcdef","Bearer ghijkl"]}',
+  '{"authorization":["Bearer abcdef","Digest roles=[admin]","Bearer ghijkl"]}',
+  // A quote is closed only by the same character that opened it, so an
+  // apostrophe inside a double-quoted element does not end it, and a
+  // single-quoted serialization is read the same way as a double-quoted one.
+  '{"authorization":["it\'s fine","Bearer abcdef","Bearer ghijkl"]}',
+  "{'authorization': ['Digest roles=[admin]', 'Bearer abcdef', 'Bearer ghijkl']}",
+  // `\"` is the same two characters in two serializations that need opposite
+  // readings, and the pair below is the proof. In the first it is a literal
+  // quote *inside* an element, so the `]` after it is content; in the second it
+  // is the element delimiter itself, so the `]` after it closes the array.
+  // Reading the backslash one way leaks the first, the other way leaks the
+  // second -- both readings are taken and the later end wins.
+  '{"authorization":["Digest realm=\\"tenant]\\"","Bearer abcdef","Bearer ghijkl"]}',
+  'payload="{\\"authorization\\":[\\"Digest roles=[admin]\\",\\"Bearer abcdef\\",\\"Bearer ghijkl\\"]}"',
+  '{"authorization":["say \\"hi\\"","Bearer abcdef","Bearer ghijkl"]}',
+  // Nesting goes deeper than two spellings. Embedding a payload in a string
+  // adds a backslash to every delimiter and more to every literal quote, so a
+  // depth-1 delimiter (`\"`) and a depth-2 one are different lengths, and a
+  // literal quote at depth 1 is spelled exactly like a depth-2 delimiter. The
+  // depth is read off the text rather than guessed.
+  'payload="{\\"authorization\\":[\\"Digest realm=\\\\\\"tenant]\\\\\\"\\",\\"Bearer abcdef\\",\\"Bearer ghijkl\\"]}"'
+]) {
+  const hidden = redactSensitiveLogData({ note: serialized }) as Record<string, string>;
+  assert(
+    !hidden.note.includes('abcdef') && !hidden.note.includes('ghijkl'),
+    `every credential in a serialized header array must be redacted: ${serialized} -> ${hidden.note}`
+  );
+}
+
+// Matching the opening quote is what stops the span from swallowing the rest of
+// the line. An apostrophe inside a double-quoted element does not close it, so
+// the array still ends at its own `]` and the prose after it is untouched.
+// Reading any quote as closing any other desynchronises the scan, leaves a
+// string open across the `]`, and runs the span to the end of the log line --
+// which destroys the sentence that follows, the very defect this whole PR is
+// about.
+// The same guard also pins the rule that only a reading which actually reached
+// a `]` may win. A reading run at the wrong nesting depth misreads a delimiter,
+// leaves a quote open and falls off the end of the string; letting that count as
+// "the later end" ran the span across the whole log line and rewrote the
+// sentence after it. An element ending in a literal quote is the shape that
+// exposes it.
+// The last two are the routes that stopped the readings being compared at all.
+// An element ending in a literal backslash puts two backslashes before the
+// closing quote, and a scan that demanded exactly the delimiter's count read
+// that quote as content, left the element open and ran off the end of the
+// string. A literal quote inside an earlier element desynchronised a
+// wrong-depth scan far enough to reach the *note's* bracket, which is a real
+// `]` and so beat the array's own end in a longest-end comparison. Neither is
+// reachable now: the delimiter's spelling is read off the field name before the
+// scan starts, so there is one reading and nothing to compare.
+for (const note of [
+  '{"authorization":["it\'s fine","Bearer abcdef"]} and the bearer announced victory',
+  '{"authorization":["ends with a quote\\"","Bearer abcdef"]} and the bearer announced victory',
+  '{"authorization":["path=C:\\\\","Bearer abcdef"]} and the bearer announced victory',
+  '{"authorization":["say \\"hi","Bearer abcdef"]} and the bearer announced victory'
+]) {
+  const afterArray = redactSensitiveLogData({ note }) as Record<string, string>;
+  assert(
+    afterArray.note.endsWith('} and the bearer announced victory'),
+    `prose after a credential array must survive: ${afterArray.note}`
+  );
+  assert(
+    !afterArray.note.includes('abcdef'),
+    `the credential inside that array must still be redacted: ${afterArray.note}`
+  );
+}
+
+// An array left unterminated by a truncated log is read to the end of the
+// string rather than abandoned, which is the fail-closed direction for a
+// redactor and the deliberate opposite of how `shared/storyTextBlocks.ts`
+// treats an unterminated comment.
+const truncated = redactSensitiveLogData({
+  note: '{"authorization":["Bearer abcdef'
+}) as Record<string, string>;
+assert(
+  !truncated.note.includes('abcdef'),
+  'a credential inside an unterminated header array is still redacted'
+);
+
+// A later real `]` is the shape that made "the longest end that closed wins"
+// wrong rather than merely lucky. The note after the array holds a genuine
+// bracket, so a scan desynchronised inside the array could reach it and win the
+// comparison, and the sentence between the two was rewritten. The bracket in
+// the note is not an authorization value -- the field before it is `note` --
+// so nothing here is a credential array except the first one.
+const laterBracket = redactSensitiveLogData({
+  note: '{"authorization":["say \\"hi","Bearer abcdef"]} and note=\\"[the bearer announced victory]\\"'
+}) as Record<string, string>;
+assert(
+  laterBracket.note.endsWith('and note=\\"[the bearer announced victory]\\"'),
+  `prose holding a bracket of its own must survive an array before it: ${laterBracket.note}`
+);
+assert(
+  !laterBracket.note.includes('abcdef'),
+  `the credential inside that array must still be redacted: ${laterBracket.note}`
+);
+
+// A quote whose backslashes do not match the field name's is not this
+// serialization's delimiter, and treating it as one is how a value span could
+// still reach past its value: nothing closes it, so it runs to the end of the
+// line and takes the sentence after it. The field name says depth 0 here and
+// the value is written at depth 1, which is a malformed line rather than a
+// serialization -- so no span is opened, the credential is still caught by the
+// header arm walking back past the escape, and the prose is left alone.
+for (const mismatched of [
+  'authorization: \\"Bearer abcdef\\" and the bearer announced victory',
+  '{"authorization":\\"Bearer abcdef\\"} and the bearer announced victory'
+]) {
+  const hidden = redactSensitiveLogData({ note: mismatched }) as Record<string, string>;
+  assert(
+    !hidden.note.includes('abcdef'),
+    `a credential in a mismatched-depth value is still redacted: ${hidden.note}`
+  );
+  assert(
+    hidden.note.endsWith('and the bearer announced victory'),
+    `a mismatched-depth quote may not open a span that swallows the line: ${hidden.note}`
+  );
+}
+
+// A repeated header does not have to be an array to arrive as one value: joined
+// with commas into a single string is the other serialization, and the walk
+// back from the second credential reaches the comma rather than the field. The
+// field context belongs to the value, so it carries across everything inside
+// the quotes -- an array and a string are the same rule, not two.
+for (const joined of [
+  '{"authorization":"Bearer abcdef, Bearer ghijkl"}',
+  '{"authorization":"Basic xyz, Bearer abcdef, Bearer ghijkl"}',
+  // A literal quote inside the value does not end it, for the same reason it
+  // does not end an array element: at depth 0 a delimiter carries an even
+  // number of backslashes and this one carries an odd number. Ending the value
+  // on it drops everything after, and the credential after it is logged clear.
+  '{"authorization":"Bearer abcdef, say \\"hi\\", Bearer ghijkl"}',
+  'payload="{\\"authorization\\":\\"Bearer abcdef, Bearer ghijkl\\"}"',
+  "{'authorization': 'Bearer abcdef, Bearer ghijkl'}"
+]) {
+  const hidden = redactSensitiveLogData({ note: joined }) as Record<string, string>;
+  assert(
+    !hidden.note.includes('abcdef') && !hidden.note.includes('ghijkl'),
+    `every credential in a comma-joined header value must be redacted: ${joined} -> ${hidden.note}`
+  );
+}
+
+// The scheme with nothing after it is a credential that was *missing*, not one
+// being hidden. `Authorization: Bearer ` is what a failed request logs when no
+// key was sent at all, and both arms fire on the context alone -- so the line
+// came out as `Bearer [REDACTED]`, telling an operator debugging a missing
+// credential that a secret had been supplied and withheld from them. This
+// module's own defect in its other direction: asserting a credential where
+// there was none. The header arm, a serialized value and an array element each
+// reach it, so each is pinned.
+for (const empty of [
+  'Authorization: Bearer ',
+  'Invalid Authorization header: Bearer\n',
+  '{"authorization":"Bearer "}',
+  "{'authorization': 'Bearer '}",
+  'Authorization=Bearer ',
+  'the bearer '
+]) {
+  const hidden = redactSensitiveLogData({ note: empty }) as Record<string, string>;
+  assert(
+    hidden.note === empty,
+    `a scheme with no credential after it is not a redacted credential: ${JSON.stringify(empty)} -> ${JSON.stringify(hidden.note)}`
+  );
+}
+
+// An empty entry does not end a bare list either. `Authorization: Bearer ,
+// Bearer abcdef` is a list whose *first* credential is missing — a shape a
+// failed request really logs — and reading the empty entry as the end of the
+// chain abandoned the list before any span was recorded, leaving the credential
+// after it in the clear. The list ends where the repetition stops, and an empty
+// entry has not stopped it.
+for (const [line, expected] of [
+  ['Authorization: Bearer , Bearer abcdef', `Authorization: Bearer , Bearer ${REDACTED_SENSITIVE_TEXT}`],
+  [
+    'Authorization: Bearer , Bearer abcdef, Bearer ghijkl',
+    `Authorization: Bearer , Bearer ${REDACTED_SENSITIVE_TEXT}, Bearer ${REDACTED_SENSITIVE_TEXT}`
+  ],
+  [
+    'Authorization: Bearer abcdef, Bearer , Bearer ghijkl',
+    `Authorization: Bearer ${REDACTED_SENSITIVE_TEXT}, Bearer , Bearer ${REDACTED_SENSITIVE_TEXT}`
+  ],
+  // An entry with no *token* in it may still have characters — a quoted empty
+  // value, or a stray mark a serializer left where a credential belonged. The
+  // first fix here continued the list only across `Bearer` followed directly by
+  // a comma, so these stopped the scan one character earlier and every later
+  // credential stayed in the clear.
+  ['Authorization: Bearer "", Bearer abcdef', `Authorization: Bearer "", Bearer ${REDACTED_SENSITIVE_TEXT}`],
+  ["Authorization: Bearer '', Bearer abcdef", `Authorization: Bearer '', Bearer ${REDACTED_SENSITIVE_TEXT}`],
+  ['Authorization: Bearer !, Bearer abcdef', `Authorization: Bearer !, Bearer ${REDACTED_SENSITIVE_TEXT}`],
+  ['Authorization: Bearer " ", Bearer abcdef', `Authorization: Bearer " ", Bearer ${REDACTED_SENSITIVE_TEXT}`],
+  // The span still ends at the last entry that carried a credential, so an
+  // empty entry at the tail extends nothing over the prose after it.
+  ['Authorization: Bearer , and the bearer returned', 'Authorization: Bearer , and the bearer returned'],
+  ['Authorization: Bearer "", and the bearer returned', 'Authorization: Bearer "", and the bearer returned'],
+  [
+    'Authorization: Bearer "", Bearer abcdef, and the bearer returned',
+    `Authorization: Bearer "", Bearer ${REDACTED_SENSITIVE_TEXT}, and the bearer returned`
+  ],
+  // What bounds the skip: it refuses to cross a token character, and a word is
+  // made of those. So a quoted *sentence* after the scheme opens no list.
+  [
+    'Authorization: Bearer "the bearer announced victory"',
+    'Authorization: Bearer "the bearer announced victory"'
+  ],
+  // The case that actually pins that bound. Without a comma later in the line
+  // the scan runs out of string and stops for the wrong reason, so an unbounded
+  // skip passes the line above too. With a comma, an unbounded skip crosses the
+  // whole quoted sentence, opens a span over it, and destroys `announced` —
+  // this module's original defect, reached through the newest code path.
+  [
+    'Authorization: Bearer "the bearer announced victory", Bearer abcdef',
+    'Authorization: Bearer "the bearer announced victory", Bearer abcdef'
+  ],
+  [
+    'Authorization: Bearer "the bearer returned", and the bearer announced victory',
+    'Authorization: Bearer "the bearer returned", and the bearer announced victory'
+  ]
+] as const) {
+  const hidden = redactSensitiveLogData({ note: line }) as Record<string, string>;
+  assert(
+    hidden.note === expected,
+    `an empty entry does not end a bare credential list: ${line} -> ${hidden.note}`
+  );
+}
+
+// And an empty element does not cost the array the credential beside it: the
+// no-token path returns before the arms, it does not disable them.
+const mixedArray = redactSensitiveLogData({
+  note: '{"authorization":["Bearer ","Bearer abcdef"]}'
+}) as Record<string, string>;
+assert(
+  mixedArray.note === `{"authorization":["Bearer ","Bearer ${REDACTED_SENSITIVE_TEXT}"]}`,
+  `an empty scheme is preserved and its neighbour still redacted: ${mixedArray.note}`
+);
+
+// The same list with nothing serializing it. `Bearer a, Bearer b` is the form
+// RFC 7230 gives a repeated header on the wire, and a diagnostic quotes it back
+// with no quotes and no brackets around it -- so keying the span on a `[` or a
+// `"` hid the first credential and printed every later one in the clear. The
+// comma defeats the walk back from the second credential whether or not a
+// serializer was involved, so the span does not depend on one.
+for (const bare of [
+  'Authorization: Bearer abcdef, Bearer ghijkl',
+  'Invalid Authorization header: Bearer abcdef, Bearer ghijkl',
+  'Authorization=Bearer abcdef,Bearer ghijkl',
+  // The scheme keyword is matched case-insensitively at every position in the
+  // chain, not only at the first.
+  'token: Bearer abcdef, bearer ghijkl',
+  // A third entry is reached by the same repetition as the second.
+  'Authorization: Bearer abcdef, Bearer ghijkl, Bearer mnopqr'
+]) {
+  const hidden = redactSensitiveLogData({ note: bare }) as Record<string, string>;
+  assert(
+    !hidden.note.includes('abcdef') && !hidden.note.includes('ghijkl'),
+    `every credential in a bare comma-joined header must be redacted: ${bare} -> ${hidden.note}`
+  );
+}
+
+const threeBare = redactSensitiveLogData({
+  note: 'Authorization: Bearer abcdef, Bearer ghijkl, Bearer mnopqr'
+}) as Record<string, string>;
+assert(
+  !threeBare.note.includes('mnopqr'),
+  `the chain does not stop at the second entry: ${threeBare.note}`
+);
+
+// What ends a bare list, asserted rather than left to the reader: the
+// repetition, and only the repetition. A comma with prose after it is a
+// sentence, and reading the value to the end of the line instead would put this
+// module's original defect back -- a provider's error text follows a credential
+// with a sentence far more often than with a second credential.
+for (const [line, survivor] of [
+  ['Authorization: Bearer abcdef, and the bearer returned', 'and the bearer returned'],
+  ['Authorization: Bearer abcdef, then the bearer announced victory', 'announced victory'],
+  ['Authorization: Bearer abcdef. The bearer returned to court', 'returned to court']
+] as const) {
+  const hidden = redactSensitiveLogData({ note: line }) as Record<string, string>;
+  assert(
+    !hidden.note.includes('abcdef'),
+    `the credential that opens a bare list is still redacted: ${line} -> ${hidden.note}`
+  );
+  assert(
+    hidden.note.includes(survivor),
+    `a bare list ends where it stops repeating, not at the end of the line: ${line} -> ${hidden.note}`
+  );
+}
+
+// And the gate is unchanged: a bare list is only ever read as one when a
+// credential field name introduces it. A label that is merely English keeps its
+// prose, comma-joined or not.
+for (const spared of [
+  'The authorization ceremony: Bearer of the seal, Bearer of the oath',
+  'Chapter 3: Bearer of the Oath, Bearer of the Seal',
+  'header: Bearer of the seal, Bearer of the oath'
+]) {
+  const hidden = redactSensitiveLogData({ note: spared }) as Record<string, string>;
+  assert(
+    hidden.note === spared,
+    `a label that is not a credential field opens no bare list: ${spared} -> ${hidden.note}`
+  );
+}
+
+// What that costs, asserted rather than left implied. Inside a value the writer
+// labelled with an authorization field name, `bearer` is header data and the
+// word after it is redacted wherever it sits -- exactly as it already was
+// inside an array. The cost is bounded by the same gate the rest of this arm
+// uses: the field name must be a credential field, and the value must actually
+// be serialized as one. A story field is untouched, and so is an unquoted value
+// that only a label precedes.
+const insideLabelledValue = redactSensitiveLogData({
+  note: 'token: "the bearer announced victory"'
+}) as Record<string, string>;
+assert(
+  !insideLabelledValue.note.includes('announced'),
+  `prose inside a labelled credential value is treated as header data: ${insideLabelledValue.note}`
+);
+for (const spared of [
+  'token: the bearer announced victory',
+  '{"storyText":"the bearer announced victory"}',
+  '{"note":"the bearer announced victory"}',
+  'Title: "the bearer announced victory"',
+  'He said: "Bearer of the seal" and the bearer announced victory'
+]) {
+  const untouched = redactSensitiveLogData({ note: spared }) as Record<string, string>;
+  assert(
+    untouched.note === spared,
+    `the value span may not reach story prose: ${spared} -> ${untouched.note}`
+  );
+}
+
+// The delimiter's spelling is read off the field name, so the same array at
+// three nesting depths is read three ways without anything being guessed. The
+// depth-2 line is the one that used to need a candidate set: a literal quote at
+// depth 1 and a delimiter at depth 2 are the same three backslashes.
+for (const [depth, serialized] of [
+  [0, '{"authorization":["Bearer abcdef","Bearer ghijkl"]}'],
+  [1, 'payload="{\\"authorization\\":[\\"Bearer abcdef\\",\\"Bearer ghijkl\\"]}"'],
+  [2, 'outer="payload=\\"{\\\\\\"authorization\\\\\\":[\\\\\\"Bearer abcdef\\\\\\",\\\\\\"Bearer ghijkl\\\\\\"]}\\""']
+] as const) {
+  const hidden = redactSensitiveLogData({ note: serialized }) as Record<string, string>;
+  assert(
+    !hidden.note.includes('abcdef') && !hidden.note.includes('ghijkl'),
+    `an array at depth ${depth} is read from its field name: ${serialized} -> ${hidden.note}`
+  );
+}
+
+// Reading the arrays costs a pass of its own, so the shapes that pass is worst
+// on are held to a time: a bracket per field name, and a credential per array.
+// The second is the one that matters — the membership test is a cursor that
+// only moves forward precisely because a scan of every recorded span per
+// scheme keyword is quadratic on that shape, and a serialized header dump is
+// exactly one array and one credential per element.
+//
+// This bounds the pass; it does not pin every line of it. The restart past a
+// recorded span, and the `<=` the cursor advances on, are both unobservable
+// here — no input distinguishes them, only a stopwatch on inputs far larger
+// than a log line — so they are cheap insurance rather than asserted behaviour.
+for (const [label, note] of [
+  ['labelled bracket run', 'authorization:['.repeat(20_000)],
+  ['credential per element', '{"authorization":["Bearer abcdef"]},'.repeat(20_000)]
+] as const) {
+  const startedAt = Date.now();
+  redactSensitiveLogData({ note });
+  const elapsed = Date.now() - startedAt;
+
+  // Ten seconds, not four. This is a wall clock inside a correctness suite, so
+  // the number has to separate the thing it is for from the thing it is not:
+  // the quadratic regressions it exists to catch measured 25s and 63s, while
+  // the linear implementation measures 335ms and 687ms. Anywhere in that gap
+  // catches them; the higher end also survives a loaded shared runner, where a
+  // four-second bound would fail `npm run test:all` for a reason having nothing
+  // to do with the change under test. Raised on review for exactly that.
+  assert(
+    elapsed < 10_000,
+    `${label}: 20,000 arrays took ${elapsed}ms — the array pass is not linear`
   );
 }
 

@@ -379,6 +379,1033 @@ Not claimed:
 
 - No evidence this path is reachable in production today — see the "masked today" note above. This is a currently-dead-in-production but fully-built and now-correct capability, the same category as the `paths`/`statusPath` seam it completes.
 
+## 2026-08-28 UTC - `redactBearerTokens` took the word after any standalone `bearer` — `In review` (PR #316, not merged)
+
+**Status: `In review`.** Every behaviour this entry describes lives on
+`claude/gallant-ritchie-mrleo7` and on no merged branch. `AGENTS.md` Publication
+Discipline makes "merged to `main`" the only meaning of `Done`, and this entry
+was reading as done — present tense throughout, and "closes #314" — while the PR
+was still taking review rounds. Relabel this to `Done` only when #316 merges,
+and note that #316 is stacked on #315, so it cannot merge before that one does.
+
+Closes the second and last direction #314 records, and the one #313 wrote,
+reviewed and withdrew. `hasBearerBoundaryBefore` settled whether `bearer` was a
+word of its own — right, and worth keeping — and then whatever followed it was
+taken as a credential with no further test at all. So `a standard bearer led the
+march` logged as `a standard Bearer [REDACTED] the march`: the word destroyed,
+and `[REDACTED]` asserting a credential had been there when none was, on a line
+an operator is reading precisely because something went wrong.
+
+The repair in #313 tested the *shape* of the following run. Codex found the hole
+and it was real: `Authorization: Bearer abcdef` was a live credential in a
+deployment that had configured `API_KEYS=abcdef`, and a shape check spared
+exactly that shape. #314 then recorded preceding context as a failed
+discriminator too, because the suite asserts `sent Bearer abc123def456 upstream`
+is redacted with a plain word in front of the keyword.
+
+The finding here is that both are true of each test **alone** and neither is
+true of their union. Redact when the keyword sits where a header, JSON body or
+query string puts it, **or** when the following run is credential-shaped:
+
+| line | arm that fires | result |
+| --- | --- | --- |
+| `a standard bearer led the march` | neither | preserved |
+| `the bearer of bad news` | neither | preserved |
+| `Bearer of the seal walked in` | neither | preserved |
+| `news. Bearer of the seal walked in` | neither | preserved |
+| `sent Bearer abc123def456 upstream` | shape | redacted |
+| `Authorization: Bearer abcdef` | introducer | redacted |
+| `Bearer kkkkkkkkkkkkkkkk` | shape | redacted |
+
+The introducer set is `:` and `=` only. Sentence punctuation (`.` `,` `;` `!`
+`?` `-`) is not an introducer, or the word after every sentence break would be
+destroyed again; start-of-string is not one either, since `Bearer of the seal
+walked in` opens a sentence.
+
+**Self-review caught this set too wide, and it mattered.** The first version
+also admitted `"`, `'`, `(`, `[`, `{`, `/`, `+`, `&`, `|`, `>` and `\` as
+"header, JSON or encoded-payload" positions. What this module is actually handed
+is story content — the suite two screens up feeds it `htmlContent` — so every
+one of those sits immediately before an ordinary capitalized noun in the inputs
+this app really produces:
+
+```text
+<p>Bearer of the seal walked in</p>   -> <p>Bearer [REDACTED] the seal walked in</p>
+"Bearer of the seal," he said         -> "Bearer [REDACTED] the seal," he said
+(Bearer of the oath) stepped forward  -> (Bearer [REDACTED] the oath) stepped forward
+```
+
+That is the defect this entry is about, reintroduced by the repair for it, on
+the most common shape story text takes. Nothing was lost by narrowing: a
+credential written after a quote or a tag is still caught by the shape arm,
+which carries the general case. Those five inputs are now asserted, and the
+mutation that re-widens the set is killed by them.
+
+`&` came out as well. `?auth=1&bearer=xyz` is a real credential position, but
+the scheme must be followed by whitespace to be read at all and a query
+parameter has `=` there — so `&` could never fire, and dead configuration that
+reads as coverage is worse than none. That query-string form is unredacted
+before this change and after it; it is recorded in the security guide as a known
+gap rather than quietly widened into this PR.
+
+Why this is sound now and was not in #313: the residual gap is a run that is
+both under eight characters and purely alphabetic *and* written with no
+introducer in front of it. For this app's own keys that shape is no longer
+configurable — the entry above requires a 16-character `b64token` body, which is
+above the length arm's floor and redacts on shape alone. Provider credentials
+(xAI, ElevenLabs, Clerk) carry `-`, `_` or `.` and are long, so they redact on
+shape too. That dependency is why this rides on the `API_KEYS` contract rather
+than landing beside it.
+
+**Review round 1 raised two findings that pushed the same knob in opposite
+directions.** Codex: an eight-character floor still destroys `the bearer
+announced victory`, because English has a great many eight-letter words and the
+ones following this noun are the common ones. Also Codex: do not widen the
+band in which a short alphabetic credential survives. Raising the floor fixes
+the first and worsens the second.
+
+They resolve by making the floor mean something instead of picking a number.
+The shape rule is now two clauses rather than one: a run carrying a character an
+English word cannot — a digit or one of `b64token`'s `._~+/=-` — is a credential
+at *any* length, which is the arm that catches every provider token this app
+holds (`xai-…`, `sk_…`, and a Clerk JWT all carry one); only a *purely
+alphabetic* run needs a length, and that length is `API_KEY_MINIMUM_LENGTH`
+itself. What a deployment may configure as a credential and what the logger
+hides as one are now one number, asserted equal by the suite. The widened band
+therefore contains no shape this app can actually produce — stated as the
+assumption it is, in the security guide, rather than as a proof.
+
+Codex's third premise was checked and does not hold: `warnAuthVerificationFailure`
+logs only `errorName`, never the Clerk token, and a Clerk session token is a JWT
+that the non-letter clause catches regardless.
+
+**A fourth finding, on the self-review commit, was the same mistake a third
+time.** Codex: a separator is not a header. `Title: Bearer of the seal`,
+`Chapter 3: Bearer of the Oath` and `role=bearer of bad news` each put `:` or
+`=` immediately before the noun — a story title, a chapter heading this app
+generates, and ordinary structured prose. Having already narrowed the set once
+for HTML and dialogue, I had still left the arm meaning "a punctuation mark
+preceded this".
+
+It now means "a header carried this": an authorization field name
+(`authorization`, `x-api-key`, `token`, `access_token`, …), then `:` or `=`,
+then the scheme. Requiring the name is also what lets quotes be skipped again,
+so `{"authorization": "Bearer abcdef"}` is covered — recovering the JSON shape
+that the earlier narrowing had dropped — while `He said: "Bearer of the seal"`
+reaches the label `said` and is left alone.
+
+**Review round 3, on the gate itself, found two ways it was too strict** — both
+regressions from the old unconditional redaction, and both in text carrying
+explicit authorization context, so neither is the accepted residual:
+
+```text
+Invalid Authorization header: Bearer abcdef        the label's last word is `header`
+payload="{\"authorization\":\"Bearer abcdef\"}"    the walk stopped at the escape `\`
+```
+
+The first is a provider's error text labelling the header in words; the walk now
+looks back exactly one word past `header`/`headers`, and past a `-header`
+suffix written as one token. Exactly one word, on purpose: an unbounded scan for
+a field name anywhere before the separator would destroy `The authorization
+ceremony: Bearer of the seal`, which is asserted alongside `token of my esteem:
+Bearer of bad news` and a bare `header: Bearer of the seal`. The second is an
+error message carrying a JSON payload already escaped once; backslashes are now
+skipped with the quotes they escape, which cannot loosen anything on its own
+because a field name and a separator are both still required.
+
+**Review round 4 found one more prose class, and two the owner should rule on.**
+Codex: a hyphen is ordinary English, and reading every non-letter as proof of a
+credential destroyed `the bearer re-entered the chamber`, `self-appointed`,
+`half-turned`, `well-known`. That is this entry's own defect in a class none of
+the earlier rounds had looked at, so it is fixed: a run of letters joined by
+interior single hyphens is word-shaped and takes the alphabetic floor. A
+leading, trailing or doubled hyphen is not, nor is a digit, `_`, `.`, `+`, `/`
+or `=` — so every provider token still fails the word test and is caught at any
+length (`xai-secret-key-123` and `a1b2c3` on digits, `sk_live_…` on its
+underscore, a JWT on its dots), all asserted.
+
+**The other two are not being patched, and that is a deliberate stop.** (Round 5
+below revisits the array half of this and fixes it. The stop on the *label* half
+stands.) Codex
+also asked for `Invalid Authorization request header:` (a longer descriptive
+label than round 3's `header`) and for `{"authorization":["Bearer a","Bearer
+b"]}` (a stringified array). Both are the same class as round 3: the walk cannot
+reach the field name through some new arrangement of natural-language label or
+serialization. That space is unbounded — each round has produced a longer
+example — and four rounds of enumerating it is the design telling us something.
+
+Two things bound the exposure, and they are why stopping is defensible rather
+than lazy. The credential in both examples is `abcdef`: a short purely
+alphabetic run, which #315's contract makes unconfigurable and which no provider
+issues, so these are reachable only with a credential shape this app cannot
+produce — the same bound as the accepted residual, not a new hole. And the
+*structured* form of the array case never reaches this function at all:
+`SENSITIVE_KEY_PATTERNS` in `logger.ts` blanks an `authorization` key wholesale,
+array value included, before any text redaction runs. Only an
+already-stringified payload gets here.
+
+**Mutation result.** Fourteen applied, fourteen killed after round 4, including one for
+each finding above: dropping the descriptive-label suffix, and no longer
+skipping escape backslashes. The two mutants that survived round 2 — widening
+the separator set and the quote-skip set — are now killed, because the label
+cases give both something to bite on.
+
+Validation: `npm run test:all` exits 0, `scripts/recovery/preflight.sh
+--skip-status` exits 0. **Counterfactual mutations: 14 applied, 14 killed** —
+reverting to "any non-letter is a credential", allowing leading, trailing or
+doubled hyphens as a word shape, letting digits count as word characters,
+dropping either arm, dropping the field-name gate, admitting a prose label
+(`title`, `role`) as a credential field, making the label lookback unbounded,
+dropping the `header` suffix, no longer skipping escape backslashes, reverting
+the alphabetic floor to eight, raising it above the configured-key minimum, and
+letting a digit count as a word character. None is committed. The equality of the two
+floors is asserted directly, so neither can be moved into a gap without the
+suite noticing.
+
+Not claimed: no evidence this was corrupting production logs; it is found by
+reading. The old behavior over-redacted, which is the safe direction — this
+trades that for a narrower rule whose fail-closed edge is now pinned by tests.
+
+**Review round 5 reverses half of round 4's stop, and the reasoning for the
+reversal is the useful part.** Round 4 refused the serialized array alongside
+the multiword label, on the grounds that both were "the walk cannot reach the
+field name through some new arrangement". Re-reading that with the array in
+hand, the two are not the same class at all, and grouping them was the error:
+
+| | multiword label | serialized array |
+| --- | --- | --- |
+| what defeats the walk | `request`, and the next word after it | `[` and `,` |
+| the space to cover | English qualifiers | three characters |
+| does a fix end? | no — each round produced a longer label | yes, that is the whole grammar |
+
+Enumerating English is what round 4 was right to stop. An array is closed
+grammar, and the fix needs no new vocabulary: the field context belongs to the
+array rather than to any one element, so it is established **once**, by the
+existing field-name gate applied to the `[` instead of to the scheme, and every
+element inherits it. `{"authorization":["Bearer abcdef","Bearer ghijkl"]}` loses
+both credentials; `{"authorization":["Basic xyz","Bearer abcdef"]}` loses the one
+that is a bearer, whatever position it sits in.
+
+Because the gate is the same one, this cannot loosen the rule — a bracket is
+never sufficient on its own. `Title: ["Bearer of the seal", "Bearer of bad
+news"]`, `Chapter 3: ["Bearer of the Oath"]`, `The authorization ceremony:
+["Bearer of the seal"]` and `header: ["Bearer of the seal"]` all reach a label
+that is not a field name and stay prose, and each is asserted. An array left
+unterminated by a truncated log runs to the end of the string: the fail-closed
+direction, and the deliberate opposite of how `shared/storyTextBlocks.ts` treats
+an unterminated comment, because there the cost is losing a story from the word
+count and here it is over-redacting inside text already labelled an
+authorization value.
+
+Round 4's bound on the exposure was accurate and is why this is a repair rather
+than an incident: the credential is `abcdef`, a shape #315's contract makes
+unconfigurable, and `{"authorization":["Bearer xai-secret-key-123"]}` was
+redacted on shape alone throughout. The *structured* form still never reaches
+this function — `SENSITIVE_KEY_PATTERNS` blanks the key wholesale, array value
+included — so this is only ever an already-stringified payload.
+
+**Membership is a forward-only cursor rather than a scan, and that is not
+incidental.** One array and one credential per element is exactly what a
+serialized header dump looks like, and testing every recorded span per scheme
+keyword is quadratic on it — measured at 953ms against 584ms for 20,000 elements
+before the cursor replaced the scan. Both shapes are held to a time.
+
+**Review round 6 found the assumption round 5 flagged as most likely wrong.**
+Asking for the review named three assumptions in descending order of worry, and
+Codex went straight to the third: the span ended at the first `]`, justified on
+the grounds that a credential cannot contain one. True, and beside the point —
+the *credential* cannot, but a **sibling element** is under no such obligation,
+and `Digest roles=[admin]` is a real header value:
+
+```text
+{"authorization":["Digest roles=[admin]","Bearer abcdef"]}
+    -> span closed inside element one; the credential emitted in the clear
+{"authorization":["Bearer abcdef","Digest roles=[admin]","Bearer ghijkl"]}
+    -> `abcdef` redacted, `ghijkl` in the clear -- everything after the bracket lost
+```
+
+This is the module's recurring mistake in a sixth costume: reasoning about the
+token and forgetting the text around it. The array now ends at the first `]`
+with no quote open, and a quote is closed only by **the character that opened
+it**, so `"it's fine"` keeps its apostrophe instead of ending there.
+
+Backslashes were not read as escapes, because round 3's escaped payload uses
+`\"` pairs *as* the delimiters. The residual was recorded as tolerable on the
+grounds that a desynchronised scan carries a string open too long, extending
+the span and over-redacting — fail-closed. **That claim was wrong, and round 7
+below disproves it rather than refining it.**
+
+**Review round 7 falsified round 6's fail-closed claim, which is the finding
+rather than the leak.** Codex produced a plain payload carrying an escaped
+quote:
+
+```text
+{"authorization":["Digest realm=\"tenant]\"","Bearer abcdef"]}
+    -> unchanged; the credential logged in the clear
+```
+
+Round 6 had said the escaped-quote ambiguity fails safe by holding a string
+open too long. It does the opposite: the misread quote leaves the scan
+*outside* a string where it should be inside, so the `]` in `tenant]` closes
+the array early and everything after it falls outside the span. That is a
+leak, not over-redaction, and the reasoning was wrong in the one direction
+that matters for a redactor.
+
+**Why the obvious fix would have regressed round 3.** `\"` is the same two
+characters in two serializations needing opposite readings, and only the
+nesting depth distinguishes them — which is unknowable from the `[` onwards:
+
+| input | `\"` means | correct reading |
+| --- | --- | --- |
+| `["Digest realm=\"tenant]\""]` | literal quote inside an element | escape-aware |
+| `payload="{\"authorization\":[\"Bearer x\"]}"` | the element delimiter | ignore backslashes |
+
+Reading backslashes as escapes fixes the first and breaks
+`payload="{\"authorization\":[\"Digest roles=[admin]\",\"Bearer x\"]}"`, which
+works today. So both readings are taken and **the later end wins**. The
+asymmetry that makes this sound: whichever reading is wrong for a given input
+ends its span *early*, because a misread quote leaves the scan outside a string
+rather than inside one. Taking the maximum therefore selects the correct
+reading in both cases, and where both are wrong it over-covers rather than
+under-covers — which is the fail-closed direction actually argued for, this
+time by construction rather than by assertion.
+
+**Review round 9: one fixed, two escalated, and the escalation is the point.**
+Codex returned three findings. The third is fixed here; the first two are
+**deliberately not fixed**, and this entry exists mainly to explain why.
+
+**Fixed — a slash joins an English word exactly as a hyphen does.**
+
+```text
+the bearer and/or recipient must sign        -> the Bearer [REDACTED] recipient must sign
+the bearer his/her representative appointed  -> the Bearer [REDACTED] representative appointed
+```
+
+Round 4 added the hyphen to `isWordLikeRun` after `re-entered` and
+`self-appointed` were destroyed. That fixed the instances and left the class:
+`/` joins two halves of one expression the same way. Both are now joiners, with
+leading, trailing and doubled ones still refused, so `/abcdef`, `ab//cd` and
+`abcdef/` remain credentials. The cost is stated rather than implied: a purely
+alphabetic `abc/def` under 16 characters is now preserved — the same band as
+the Note 7 residual and bounded the same way. Mutations: 2 applied, 2 killed.
+
+**Not fixed — the two findings inside the credential-array scanner**, which is
+where the fifth round of defects in one function has now landed:
+
+```text
+{"authorization":"Bearer abcdef, Bearer ghijkl"}
+    -> `ghijkl` in the clear; the walk stops at the comma inside one quoted value
+{"authorization":["path=C:\\","Bearer abcdef"]} and the bearer announced victory
+    -> `and the Bearer [REDACTED] victory`; an element ending in `\\` has a
+       closing quote after two backslashes, no reading closes the array, and the
+       span runs to the end of the log
+```
+
+Both are real and both were reproduced. The second is the **third** time this
+scanner has destroyed prose after an array, which is the defect the entire PR
+exists to fix.
+
+**Why this stops here rather than taking a fifth patch.** Rounds 5–8 each fixed
+this function and each was followed by a new defect in it — two leaks and two
+prose destructions — and twice the error was in a stated *safety property*
+rather than in code. The pattern is no longer about the individual cases: a
+forward span computed by scanning a serialization this module cannot actually
+parse has a worst case of "swallow the rest of the log", and every round has
+found another way to reach it.
+
+**The recommendation, for the owner to rule on.** Replace the forward span with
+a **backward walk**: let `isIntroducedAsCredential` cross `,`, `[` and complete
+preceding elements on its way back to a field name. That is strictly better in
+the way that matters — a backward walk that fails simply returns false for one
+keyword, so the "runs to the end of the log" failure becomes *structurally
+impossible* rather than fixed-again — and it also answers the comma finding,
+which the span design cannot reach at all. The alternative is to revert the
+array feature to its pre-round-5 state, which returns a bounded leak and
+removes the prose risk.
+
+Not taken unilaterally because it is a redesign of a security path, and the
+judgement that would pick it is the same judgement that has been wrong three
+rounds running.
+
+**Round 10 tested that reasoning within ten minutes and confirmed it.** The
+round-9 reply said "a sixth patch would move the boundary again, not remove the
+worst case". Codex then produced the sixth route:
+
+```text
+{"authorization":["say \"hi","Bearer abcdef"]} and note=\"[the bearer announced victory]\"
+    -> ... and note=\"[the Bearer [REDACTED] victory]\"
+```
+
+Different from the round-9 fallback: here a wrong-depth scan reaches a **later
+real `]`** — the note's bracket — so it is a legitimate candidate under "only a
+reading that closed the array may win", and it then wins the longest-end
+comparison against the correct end. Six routes to a wrong array end are now on
+record, four of them found *after* a fix that was supposed to settle the
+question:
+
+| round | route | outcome |
+| --- | --- | --- |
+| 6 | `]` inside a sibling element | leak |
+| 7 | escaped quote desynchronises the scan | prose destroyed |
+| 8 | nesting depth beyond two readings | leak |
+| 9 | `\\` before a closing quote → end-of-string fallback | prose destroyed |
+| 9 | comma-joined values, no array at all | leak |
+| 10 | wrong-depth scan reaches a later real `]` | prose destroyed |
+
+Codex's suggested fix — select the end from the structurally consistent depth
+rather than the longest successful scan — is correct, and is deliberately not
+applied. It would be the third rewrite of the selection rule (first `]` → max →
+max-of-closed → structurally-consistent), and each earlier rewrite was also
+correct and was also followed by a new route.
+
+**What round 10 adds to the argument:** there is no "structurally consistent
+depth" available here, because this function is handed a *fragment* — a
+substring of a log line beginning at a `[` — and cannot know the depth it was
+serialized at. Every selection rule is therefore a heuristic over readings, and
+a heuristic over readings has a worst case that reaches past the array. A
+backward walk has no end to select and so cannot have that worst case.
+
+**Review round 11: the security guide was describing the rule the code had
+before round 9.** Codex found that Note 7 still listed `/` among the characters
+that settle a run as credential-shaped, while `isWordLikeRun` had accepted an
+interior single slash since round 9. Verified rather than taken on the reading:
+
+```text
+sent Bearer abc/def upstream     -> unchanged; the guide said this was redacted
+Authorization: Bearer abc/def    -> Authorization: Bearer [REDACTED]
+```
+
+The code is right and the document was stale, so the document moved. An
+operator reading Note 7 would have concluded that a slash-joined value below the
+floor was hidden, which is the failure mode that matters in a security guide:
+not a wrong redaction but a wrong belief about one. Note 7 now states both
+joiners, why each is there, and the residual in the two spellings it actually
+has — `sent Bearer abc/def upstream` alongside `sent Bearer abc-def upstream` —
+with the bound unchanged, since Note 6's contract keeps a configured entry out
+of that band and every provider token is caught on shape.
+
+`tests/log-redaction.test.ts` now pins the documented rule in both directions
+rather than only the prose it was added for: each joiner spared below the floor,
+and the same shape redacted again at `API_KEY_MINIMUM_LENGTH`, so the guide and
+the code cannot drift apart again silently. Dropping `/` from `isWordJoiner`
+fails the suite.
+
+**Review round 22: two code smells this slice introduced had gone unread for
+five commits, and the lint parity claimed every round was measured against the
+wrong baseline.** CodeRabbit, four findings on `22a42b8`, all four taken.
+
+**A correction inside this entry, made before it was ever accurate.** Its first
+draft said "the SonarCloud gate is failing". It is not, and it never was —
+CodeRabbit raised the merge risk on that basis, then retracted it on being
+asked: SonarQube reports **Quality Gate passed** throughout, and the two items
+are open `typescript:S3776` findings — `CRITICAL` `CODE_SMELL`, not gate
+failures and not security hotspots. Both readings of that badge were wrong in
+opposite directions: mine treated the passing gate as evidence the findings were
+someone else's, and the review's treated the findings as evidence the gate was
+red. The accurate statement is the narrow one: **the gate passes, and this slice
+added two open critical code smells to changed code.**
+
+**Two open cognitive-complexity findings, in this slice's own two functions.**
+The PR comment shows only "Quality Gate passed · 2 New issues", and
+`sonarcloud.io` is unreachable from where this session runs, so the two issues
+had gone unread across five commits. I inferred from the count holding at
+exactly 2 that they were stable findings elsewhere in the diff. **That inference
+was wrong**, and CodeRabbit surfaced the check output that settles it:
+
+```text
+shared/sensitiveTextRedaction.ts:20   Cognitive Complexity 20 > 15   redactBearerTokens
+shared/sensitiveTextRedaction.ts:386  Cognitive Complexity 21 > 15   findBareCredentialListEnd
+```
+
+Both are functions this slice changed, and `findBareCredentialListEnd` is one it
+created, so the failure is this slice's. The count held at 2 because both landed
+together in round 17 — the constancy that made them look pre-existing is
+explained by them being introduced together, not by them being someone else's.
+
+Fixed by extraction rather than by rearrangement, so the shape of the reasoning
+survives: `readBearerRunAfter` returns the four numbers one scan produces
+(`cursor`, `tokenEnd`, `body`, `runLength`), which also puts in one place the
+separation that rounds 14 and 18 both got wrong — shape is asked of the body,
+length of the whole run. `readBareCredentialEntry` returns one entry's
+`credentialEnd` and `entryEnd` separately, which is exactly the distinction
+rounds 20 and 21 kept collapsing: an entry can exist without carrying a
+credential. The refactor is behaviour-preserving by **differential test** rather
+than by assertion alone: 40,000 random compositions of scheme keywords,
+separators, quotes, escapes and prose, compared against the round-21
+implementation, **0 mismatches**. All five previously-killed mutations are still
+killed against the extracted form.
+
+**MD040, and the baseline mistake behind it.** Eight fenced blocks in this entry
+carry no language. Every "markdown lint at parity" claim in rounds 17–21 was
+measured by stashing the *working tree* — which compares a commit against the
+one before it, not against the branch point. Against `origin/claude/gallant-
+ritchie-1cyjde` the file has 0 MD040 and this branch had 8, every one of them
+added by this entry. The parity claim was true of each step and false of the
+slice, which is the more embarrassing way to be wrong: the number was checked
+every round and the thing it was checked against was not. Now `text` on all
+eight, and measured against the branch point: every rule at parity except MD013,
+which gains this slice's prose.
+
+**Two smaller ones, both taken.** The guide said the structured form "never
+reaches this function at all"; `redactValue` does receive the value and returns
+`[REDACTED]` at the `authorization` key before traversing it, so the wording is
+now what the code does. And the linearity budget was a 4-second wall clock
+inside the correctness suite — raised to 10s, which still separates the 335ms
+and 687ms linear measurements from the 25s and 63s quadratic regressions it
+exists to catch, without failing `npm run test:all` on a loaded shared runner
+for a reason unrelated to the change under test.
+
+**Review round 21: an entry can be empty without being *nothing*, and the
+mutation that was supposed to prove the bound did not.** CodeRabbit, P2, on
+`22a42b8` — requested manually because Codex exhausted its review budget mid-PR
+and the head had no adversarial reader:
+
+```text
+Authorization: Bearer "", Bearer abcdef  -> abcdef in the clear
+Authorization: Bearer !,  Bearer abcdef  -> abcdef in the clear
+```
+
+Round 20 continued the list only across `Bearer` followed *directly* by a
+comma. An entry can hold characters without holding a token — a quoted empty
+value, or a stray mark a serializer left where a credential belonged — and those
+stopped the scan one character before the comma. The third spelling of the same
+family in three rounds, and the second time the fix was narrower than the rule
+it was implementing.
+
+An entry with no token now skips to the comma, and what bounds that skip is what
+it refuses to cross: a **token character**, which is what every word and every
+credential is made of. So it can only ever pass punctuation and the whitespace
+between it — `Authorization: Bearer "the bearer announced victory"` stops on the
+`t` and opens no span.
+
+**The mutation that was supposed to prove that bound survived, and the reason is
+worth recording.** Removing the token-character guard — making the skip
+unbounded — passed the suite, because the only assertion for it had no comma
+later in the line, so the unbounded scan ran out of string and stopped for the
+wrong reason. A test that passes for a reason other than the one it is named
+for is not coverage. The pinning case needs the comma:
+
+```text
+Authorization: Bearer "the bearer announced victory", Bearer abcdef
+```
+
+Unbounded, that crosses the quoted sentence, opens a span over it and destroys
+`announced` — this entry's original defect, reached through its newest code
+path. Asserted now, and the mutation is killed.
+
+Counterfactual mutations: 4 applied, 3 killed, 1 reported. Killed: removing the
+skip; letting it cross token characters; letting it cross commas. Reported —
+applying the skip even when the entry *did* carry a token survives. It differs
+only on malformed input (a non-token run directly after a real credential) and
+there it redacts more rather than less, which is the safe direction; the
+narrower form is kept because it is the rule that can be stated, and the
+mutation is recorded rather than pinned by an assertion for a shape whose
+redaction is not clearly right.
+
+**Review round 20: an empty entry ended a list it should only have paused, and
+this entry was labelled as though it had shipped.**
+
+Codex, P2: `Authorization: Bearer , Bearer abcdef` leaves `abcdef` in the clear.
+Round 19 taught the reader that an empty run is a *missing* credential; round 17
+taught it that a bare list continues across a comma. Neither knew about the
+other, so the empty first entry returned before any span was recorded and took
+the rest of the list with it. Measured against `74594ff` the credential leaked
+there too, so it is not a regression — but round 17 is the fix that was supposed
+to cover it, and it did not:
+
+```text
+74594ff:  Authorization: Bearer , Bearer abcdef -> Bearer [REDACTED], Bearer abcdef
+67a125f:  Authorization: Bearer , Bearer abcdef -> Bearer , Bearer abcdef
+now:      Authorization: Bearer , Bearer abcdef -> Bearer , Bearer [REDACTED]
+```
+
+The `[REDACTED]` on the first line is the false one round 19 removed; the
+credential on the second is the one that should never have been there. An empty
+entry no longer ends the chain, and the span still ends at the last entry that
+*carried* a credential, so an empty entry at the tail extends nothing over the
+prose after it — `Authorization: Bearer , and the bearer returned` is asserted
+unchanged.
+
+Codex, P1, on this entry rather than on the code: it described the repair in the
+present tense and said it closes #314, with no `In review` label, while the work
+sits on an open PR. `AGENTS.md` Publication Discipline makes "merged to `main`"
+the only meaning of `Done`, and a recovery log that overstates publication is
+exactly what that rule exists to prevent — the same P1 this file already records
+taking once, at the 2026-06 plan-progress entry. The heading now carries
+`In review` (PR #316, not merged) and says what has to happen before it changes.
+
+**Also reported and deliberately not taken: a third finding, a pre-existing leak
+in the depth inference.** `{"message":"Invalid Authorization header: \"Bearer
+abcdef, Bearer ghijkl\""}` leaves `ghijkl` in the clear. The descriptive-label
+path reads the depth off a field name that is *prose* rather than a serialized
+key, so it infers depth 0 while the value's own quotes are escaped at depth 1,
+and `findValueOpener` then refuses the opener. It reproduces identically on
+`74594ff`. Fixing it means inferring the delimiter depth from the value's opening
+quote instead of from the field name — which is precisely the "guess at the
+value" this file's depth rule was written to replace after six rounds found six
+wrong readings. That is a change to the most defect-prone machinery here, on a
+defect this slice did not introduce, so it is recorded for the owner with its
+reproduction rather than patched in a twentieth round.
+
+**Review round 19: two P2s, both pre-existing, both the same shape as defects
+this entry already records — one direction further out.** Reproduced before
+changing anything, and both reproduce identically on `74594ff`, this branch's
+head before the round-17 work, so neither is a regression from it.
+
+**The scheme with no credential after it was rewritten as a hidden one.**
+
+```text
+Authorization: Bearer                  -> Authorization: Bearer [REDACTED]
+{"authorization":"Bearer "}            -> {"authorization":"Bearer [REDACTED]"}
+Invalid Authorization header: Bearer\n -> Invalid Authorization header: Bearer [REDACTED]
+```
+
+Both arms fire on context alone, and an empty run reached them, so a failed
+request that sent *no key at all* logged as though one had been supplied and
+withheld. That is this entry's own defect in its other direction — `[REDACTED]`
+asserting a credential where there was none — and it is the thing the opening
+paragraph objects to about the original behaviour. The empty run now returns
+before either arm is consulted, because the arms answer "is this a credential
+position" and this asks the prior question of whether anything is there to be
+one. An empty array element does not cost its neighbour its redaction, asserted.
+
+**The closed-empty-value fix was live at depth 0 only.** An earlier round
+stopped the lookback at `authorization: "" Bearer of the seal`. It compared each
+quote against the character immediately before it — which is only how an empty
+value is spelled when nothing has been escaped. Embedded in a string the same
+value is `\"\"`, at depth 2 `\\\"\\\"`, and the pair is still there with its
+escaping between it:
+
+```text
+{"message":"authorization: \"\" Bearer of the seal"}
+  -> ... Bearer [REDACTED] the seal
+```
+
+So the fix held for the shape a test was written against and for no shape a real
+log carries. Backslashes belong to the quotes they escape and no longer separate
+the pair; whitespace still does. Three depths asserted.
+
+Counterfactual mutations: 5 applied, 4 killed, 1 reported. Killed: removing the
+no-token guard; placing it after the arms so context still wins; reverting the
+lookback to adjacency; letting backslashes reset the pairing. Reported rather
+than counted — making whitespace *not* reset the pairing survives, because it
+changes only whether a value holding just spaces (`authorization: " " Bearer of
+the seal`) reads as closed. That is unchanged from before this round in both
+directions, it is over-redaction rather than a leak, and taking it would widen
+the reported finding, so it is recorded rather than taken.
+
+**Review round 18: redacting a credential and consuming it are two questions,
+and only the first was being asked.** Codex, P1, on the round-17 head:
+`a...............` is one letter and fifteen stops — a sixteen-character body
+`API_KEY_CREDENTIAL_GRAMMAR` accepts, so a deployment can configure it — and it
+was logged as `Bearer [REDACTED]...............`, fifteen of the key's sixteen
+characters printed beside their own redaction. Reproduced before changing
+anything:
+
+```text
+request failed with Bearer a...............  -> Bearer [REDACTED]...............
+Authorization: Bearer a...............       -> Bearer [REDACTED]...............
+request failed with Bearer kkkkkkkkkkkkkkk.  -> Bearer [REDACTED].
+request failed with Bearer kkkkkkkkkkkkk...  -> Bearer [REDACTED]...
+```
+
+Rounds 13, 14 and 16 each fixed a way the trailing-stop trim decided *whether*
+to redact. None of them touched how much of the run the redaction then
+consumed, and `index = body === '' ? cursor : tokenEnd` handed the stops back
+whenever any word survived the trim — so the guarantee round 14 stated held for
+the decision and failed at the write. The all-marks case round 16 closed was
+this defect with the body emptied; this is the same defect with one character
+left in it.
+
+**The floor now answers both questions.** At or above `API_KEY_MINIMUM_LENGTH`
+the whole run is consumed, stops included: that is exactly the band in which a
+run could be a configured credential, and nothing distinguishes its trailing `.`
+from a full stop, so the sentence loses a mark rather than the log keeping a
+key. Below the floor the stops stay the sentence's — `sent Bearer abc123def456.
+Then it failed` keeps its stop, unchanged — and nothing handed back there could
+have been configured, since Note 6's contract puts every entry at or above the
+floor. The empty-body guard stays: a run of nothing but marks has no word to
+punctuate at any length, and trimming it would leave `index` where it started
+and never terminate.
+
+**The existing at-floor test asserted the wrong half.** It checked
+`hidden.note.includes('[REDACTED]')`, which passes while the run is only
+partly consumed — so the suite that was written to pin this guarantee could not
+see it break. It now asserts the whole line, and the four shapes above are
+pinned directly.
+
+Counterfactual mutations: 4 applied, 4 killed — reverting to the old
+consumption rule; consuming the whole run unconditionally; measuring the
+consumption floor on the body rather than the run; and dropping the empty-body
+guard.
+
+**Review round 17: the comma finding had a third spelling, and it was the one
+with no delimiter to key on.** Codex, P2: `Authorization: Bearer abcdef, Bearer
+ghijkl` redacts only the first credential and prints the second in the clear.
+Reproduced before changing anything:
+
+```text
+Authorization: Bearer abcdef, Bearer ghijkl
+  -> Authorization: Bearer [REDACTED], Bearer ghijkl
+Invalid Authorization header: Bearer abcdef, Bearer ghijkl
+  -> Invalid Authorization header: Bearer [REDACTED], Bearer ghijkl
+{"authorization":"Bearer abcdef, Bearer ghijkl"}
+  -> both redacted
+```
+
+The quoted and array forms were fixed by giving the *value* a span, and the
+span was keyed on the opener that starts it — a `[` or a delimiting quote.
+A header written on the wire has neither. So the shape RFC 7230 actually
+defines for a repeated header, and the one a provider's error text quotes back,
+was the only one of the three still losing everything after its first comma:
+the walk back from the second credential reaches the `,` exactly as it does in
+the other two, and there was no span to catch it.
+
+**What ends a bare list is the repetition, and that is the whole rule.** The
+chain is `Bearer <token>` and it continues only across a `,` followed by the
+scheme keyword again. The reading a header seems to invite — run to the end of
+the line — is the one that puts this entry's original defect back, because a
+provider follows a credential with a sentence far more often than with a second
+credential. So `Authorization: Bearer abcdef, and the bearer returned` ends at
+`abcdef` and keeps its sentence, and that mutation is killed. A single
+credential yields no span at all: the backward walk already reaches it, so a
+span over it would carry nothing.
+
+Also a residual, found while verifying rather than reported: a bare list that
+opens on a *different* registered scheme is not a chain, so `Authorization:
+Basic xyz, Bearer abcdef` keeps `abcdef` where the quoted form redacts it.
+Recorded in the security guide rather than fixed — closing it means admitting
+the other IANA schemes as chain members, which is a closed registry rather than
+the open-ended English this module refuses to enumerate, but it is a widening of
+the reported defect and the owner's call. Bounded by Note 6's contract like the
+rest of the residual: the leaked run has to be short and word-shaped.
+
+Counterfactual mutations: 6 applied, 3 killed, 3 reported. Killed: removing the
+bare-value branch; extending a crossed comma to the end of the line; dropping
+the credential-field gate for bare values. Reported rather than counted —
+recording a span for a single entry, and starting the span at the first
+credential rather than at the separator, are both no-ops because the first
+credential is already reached by the backward walk; and dropping the
+scheme-keyword check inside the chain has only a contrived witness, since the
+words that would have to line up after the comma (`<six letters> bearer`) are
+not prose anyone writes. The check is kept because the rule, not the test, is
+what bounds the span.
+
+**Review round 16: the guarantee round 14 stated was not yet true, and Codex
+found the hole in it.** The claim was "every run of `API_KEY_MINIMUM_LENGTH`
+characters or more is redacted, whatever its shape". A run of *nothing but*
+marks never reached either arm: round 13's early return fired the moment
+trimming emptied the body, before the header check and before the floor. And
+sixteen periods is a key `API_KEY_CREDENTIAL_GRAMMAR` accepts:
+
+```text
+Authorization: Bearer ................        -> unchanged, in a header context
+request failed with Bearer ................   -> unchanged
+```
+
+Verified the same way as round 14's P1, against the grammar rather than the
+reading: `/^[A-Za-z0-9._~+/-]+=*$/` matches sixteen periods and
+`credentialBodyOf` counts all sixteen.
+
+Two corrections, both of them the same idea one step further than round 14 took
+it. **A run with no word in it has no shape**, so only its length speaks: an
+ellipsis after the noun is prose, and a run at the floor is a credential.
+Reading it as *shaped* would have destroyed `the bearer ... walked away`;
+returning early read it as prose, which is what leaked. **And when such a run is
+redacted, the marks are consumed rather than handed back**, because handing back
+the marks of a run that is only marks prints the credential beside its own
+`[REDACTED]`. The marks are punctuation only when a word came before them.
+
+`Authorization: Bearer ...` is redacted now, and the assertion that used to
+claim it was prose is gone. That assertion was the defect's own claim written
+down as a test, which is the part worth recording: the suite agreed with the
+code because both came from the same mistaken sentence.
+
+Mutations: 3 applied, 3 killed — treating an all-marks run as shaped (destroys
+the ellipsis), handing the marks back after redacting (prints the key beside
+`[REDACTED]`), and always consuming them (loses the sentence's full stop after
+a real credential).
+
+**Review round 15: an empty value was being read as padding.** Codex: the walk
+back from the scheme skips whitespace, quotes and escaping backslashes as
+serialization, and two quotes side by side are all three of those — so it read
+straight through a closed empty value to the separator behind it:
+
+```text
+authorization: "" Bearer of the seal     -> authorization: "" Bearer [REDACTED] the seal
+authorization: "abc" Bearer of the seal  -> unchanged
+```
+
+The second line is why this is an inconsistency rather than a new case. A
+non-empty value already stops the walk, on its own characters; only the empty
+spelling let it through. The walk now stops at two quotes of the *same*
+character, so both spellings of a closed value stop it alike. Two *different*
+quotes side by side are a value quoted inside another —
+`authorization: "'Bearer abcdef'"` — and are still read through, asserted.
+
+Reproduced identically on `2420d67`, so pre-existing rather than introduced by
+this session's work.
+
+**The cost, stated because it runs toward under-redaction.** A credential
+written after a closed empty value, short and alphabetic enough to have no
+shape, is no longer reached by the header arm:
+`Authorization: "" Bearer abcdef` keeps `abcdef`. That is exactly the residual
+band Note 7 already records — a value #315's contract makes unconfigurable — and
+anything carrying a shape is still caught there at any length, asserted on
+`abc123def456`, `xai-secret-key-123` and a run at the floor.
+
+Mutations: 3 applied, 2 killed — dropping the stop, and stopping on any repeated
+padding character (which breaks the depth-2 array). The third, stopping on any
+two adjacent quotes rather than two identical ones, **survives and is reported
+rather than counted**: the value-span arm covers `"'Bearer abcdef'"` on its own,
+so no input distinguishes the two readings.
+
+**Review round 14: the round-13 fix had traded a prose defect for a leak, and
+the fix for that is a stronger guarantee than the arm had before.** Codex, at
+P1: `API_KEY_CREDENTIAL_GRAMMAR` counts `.` inside a token body, so
+`abcdefghijklmno.` — fifteen letters and a stop — is a sixteen-character body
+`authenticateRequest` accepts. Round 13 trimmed the stop before classifying, so
+that value was preserved:
+
+```text
+request failed with Bearer abcdefghijklmno.   -> unchanged; a configured key in the clear
+```
+
+Verified against `security.ts` rather than taken on the reading: the grammar is
+`/^[A-Za-z0-9._~+/-]+=*$/` and the floor is measured on the body with only
+trailing `=` padding excluded, so the premise holds exactly.
+
+The repair separates the two questions the run was being asked at once. **Shape
+is asked of the word body**; **length is measured on the whole run.** A mark
+prose puts around a word is punctuation for the shape question and still a
+character for the length one. That gives the arm one flat guarantee it did not
+have before round 13 either: **every run of `API_KEY_MINIMUM_LENGTH` characters
+or more is redacted, whatever its shape**, so no configured credential can
+survive the arm and the residual is exactly the band below the floor.
+
+**Round 14 also found the same class in Markdown, and that one is pre-existing.**
+`_` and `~` are `b64token` characters, so a balanced pair around a word made it
+carry marks no English word carries:
+
+```text
+the bearer _returned_ to court   -> the Bearer [REDACTED] to court
+the bearer __of__ the seal       -> the Bearer [REDACTED] the seal
+the bearer ~~returned~~ at dawn  -> the Bearer [REDACTED] at dawn
+```
+
+Reproduced on `2420d67`, this PR's head before this session, so it predates the
+depth and sentence-stop work. One balanced pair of the same mark is stripped for
+the shape question only. Balanced is the whole rule: `_abcdef` keeps its leading
+underscore and stays a credential as `-abcdef` does, `sk_live_abcdef` wears its
+underscores inside, and `-abcdef-` is not emphasis because Markdown does not
+emphasize with hyphens — asserted, and the mutation that adds `-` to the marks
+is killed by it.
+
+Mutations: 5 applied, 5 killed — measuring the floor on the trimmed body,
+dropping the emphasis strip, stripping unbalanced marks, adding `-` to the
+marks, and dropping `~`.
+
+**Not fixed, with the reason measured rather than argued.** Codex's third
+finding is that a story value spelling out an auth label is read as a field:
+
+```text
+{"story":"The authorization: [the bearer returned] was ceremonial"}
+    -> ... [the Bearer [REDACTED]] was ceremonial
+```
+
+Also reproduced on `2420d67` — pre-existing. The suggested fix is to refuse a
+separator that sits inside another quoted value, and that reverses the direction
+that matters. Measured on the current code:
+
+```text
+{"debug":"{\"authorization\":\"Bearer abcdef\"}"}          -> redacted today
+{"message":"upstream said Authorization: Bearer abcdef"}  -> redacted today
+```
+
+A credential nested inside a *non-credential* field is the commonest shape a
+real error log takes, and enclosing-context tracking refuses exactly those. The
+gap costs one word of over-redaction inside prose that spells out an
+authorization label; closing it costs credentials in the clear. Recorded in Note
+7 as a known gap instead.
+
+**Review round 13: the defect survived one character past where the repair was
+looking.** Codex, reviewing the depth-rule commit, found that `.` is a
+`b64token` character, so the scan that reads the run after the keyword took the
+full stop with it and every ordinary sentence ending on the word after the noun
+was credential-shaped on that one character. Reproduced, and worse than
+reported — the line loses its ending as well as its word:
+
+```text
+the bearer returned.                     -> the Bearer [REDACTED]
+the bearer of.                           -> the Bearer [REDACTED]
+sent Bearer abc123def456. Then it failed -> sent Bearer [REDACTED] Then it failed
+```
+
+The third line is the same mark being eaten from the other side: the credential
+was correctly hidden and the sentence still lost its full stop, which is the
+trade `redactUrls` already makes correctly one function down.
+
+A trailing run of dots is now given back to the sentence before the run is
+classified, and back to the log line after it. Only `.`, and only trailing: an
+interior dot is what makes `ab.cd` and a JWT's three parts credentials at any
+length, and `abcdef/`, `abcdef-` and base64's `=` padding are credentials that
+really do end in a `b64token` mark, all asserted. Nothing credential-bearing is
+handed back, because what is handed back is a run of dots. The residual widens
+by exactly one shape — `Bearer secret.` keeps `secret` just as `Bearer secret`
+does — which is the residual Note 7 already records, not a new gap.
+
+Mutations: 4 applied, 4 killed — dropping the trim, trimming every trailing
+non-alphanumeric (which loses `abcdef/`), leaving the stop inside the
+redaction, and classifying a run that is nothing but stops.
+
+**The escaping depth was never unknowable — only unavailable where the scanner
+was looking for it.** Rounds 5–10 held that the array scanner had to guess,
+because it was handed a *fragment* beginning at a `[` and nothing inside a
+value says what depth it was serialized at. That was true of the fragment and
+false of the function's actual inputs: the scanner had already walked back to
+the **field name** to decide the array was an authorization value at all, and
+the field name and the value it introduces were written by the same serializer
+at the same depth. The quote wrapping the name answers the question outright —
+`"authorization":` is depth 0, `\"authorization\":` is depth 1,
+`\\\"authorization\\\":` is depth 2, and an unquoted `Authorization:` is depth
+0 because nothing has been escaped.
+
+So the candidate set, the six scans, the "only a reading that closed may win"
+rule and the longest-end comparison are **gone**, and with them every route
+that reached a wrong end. One fact about the text now settles one reading.
+Measured on the recorded reproductions, all six routes:
+
+```text
+r6  ["Digest roles=[admin]","Bearer abcdef","Bearer ghijkl"]      both redacted
+r7  ["Digest realm=\"tenant]\"", ...]                             both redacted
+r8  depth-2 payload with a literal quote at depth 1               both redacted
+r9a ["path=C:\\","Bearer abcdef"] and the bearer announced …      prose intact
+r9b {"authorization":"Bearer abcdef, Bearer ghijkl"}              both redacted
+r10 ["say \"hi", …] and note=\"[the bearer announced victory]\"   prose intact
+```
+
+Two supporting changes fall out of it rather than being added to it.
+
+**A delimiter is not an equality test on the backslash count.** One literal
+backslash occupies `delimiter + 1` positions — it is escaped as often as a
+delimiting quote is, plus the one escaping it — so a delimiter is any run
+congruent to the delimiter's count modulo twice it. At depth 0 that reads: an
+even run ends in a delimiter, an odd one in an escaped quote. This is exactly
+round 9's `path=C:\\`, which an equality test read as content, and it now falls
+out of the rule instead of needing a case.
+
+**The span is over the whole value, not only over an array**, which is what
+answers round 9's comma finding — the one the forward-span design could not
+reach at all. `{"authorization":"Bearer abcdef, Bearer ghijkl"}` is one value
+holding two credentials, and the walk back from the second reaches the comma
+rather than the field. An array and a quoted string are now the same rule.
+The cost is stated in `SECURITY_IMPLEMENTATION_GUIDE.md` Note 7 and asserted:
+inside a value labelled with a credential field name, prose after `bearer` is
+redacted — `token: "the bearer announced victory"` loses `announced` — which is
+the trade the array form has always made, now made for both. Unquoted values,
+story fields and non-credential labels are untouched, and that is asserted too.
+
+**Driven by the separator rather than by the opener, which is what keeps it
+linear.** Testing every quote as an opener would be quadratic on a run of
+quotes or of whitespace — a shape story content really produces. A separator is
+not padding, so the walk back from one stops at or before the previous
+separator and the walk forward at or before the next: the regions are disjoint
+and the pass is one sweep. Measured against the previous implementation on the
+same shapes: labelled bracket run 239 → 335ms, credential per element 559 →
+687ms, quoted value run 1389 → **569ms**, story prose 735 → **397ms**, and
+200,000-character runs of quotes, whitespace and backslashes at 123–194ms.
+
+**Counterfactual mutations: 10 applied, 8 killed, 2 reported rather than
+counted.** Killed: depth pinned to 0; any quote opening a value; a delimiter by
+equality; an array read as a quoted value; an unterminated value abandoned
+instead of running to the end; the value end ignoring depth; dropping the
+quoted-value span entirely; dropping the skip past a recorded span (caught by
+the scalability check at 25 seconds, not by an output assertion). Surviving and
+**not** claimed as coverage: reading the depth off the label rather than the
+field name in the `header`-suffix path — provably equivalent, since a label must
+be preceded by a field name and so is never adjacent to the quote; and not
+resetting the backslash run across whitespace in the opener walk, which needs a
+backslash separated from the quote it would escape, a shape no serializer
+writes.
+
+**What is not fixed, and is unchanged by this.** A nested array
+(`{"authorization":[["Bearer a"],["Bearer b"]]}`) still ends at the inner `]`
+and leaks the second, exactly as before — not a header shape, and not a
+regression. The multiword-label gap from round 4 stands. Under the
+`header`-suffix path the depth reads 0 regardless, because the field name is a
+word rather than a quoted key; that costs an early end rather than a long one,
+so it is a bounded leak in a malformed line and never prose destruction.
+
+`npm run test:all` exits 0.
+
+**Review round 8 found both halves of round 7's trade were wrong.** Codex
+returned two findings on the same function, in opposite directions:
+
+```text
+payload="{\"authorization\":[\"Digest realm=\\\"tenant]\\\"\",\"Bearer abcdef\"]}"
+    -> both readings wrong; credential in the clear
+{"authorization":["ends with a quote\"","Bearer abcdef"]} and the bearer announced victory
+    -> `and the Bearer [REDACTED] victory` -- the prose destroyed
+```
+
+The second is the worse one and it is this PR's own defect, reintroduced by the
+fix for round 7. `Math.max` let a reading that never found a `]` — one that
+misread a delimiter, left a quote open and ran off the end of the string — beat
+a reading that found the right bracket. Round 7 called over-covering the
+fail-closed direction; it is not free, because over-covering is exactly how
+this module destroys prose.
+
+**The ambiguity has one dimension, so it is resolved rather than guessed at.**
+Each embedding of a payload in a string doubles a backslash run and adds one,
+so a delimiter carries 0, 1, 3, 7 … backslashes and never anything else, while
+a literal quote at depth 1 is spelled exactly like a depth-2 delimiter. Round 7
+hard-coded two readings and was beaten by a third. The depth is now read off
+the text: every `2^k - 1` run observed before a quote is tried, and **only a
+reading that actually reached a `]` may win**, the longest of those taking it.
+The end of the string is used only when no reading closed the array at all,
+which is the truncated-log case.
+
+**The scalability check earned its place.** The first version of this collected
+candidate depths by scanning to the end of the string per bracket — quadratic —
+and the guard added in round 5 failed at **63 seconds**. Bounding that scan at
+the first `]` (the array cannot end earlier under any reading, so every
+delimiter length that matters has been seen) brings the suite back to 1.6s,
+faster than before the round.
+
+**Mutation result for round 8: 6 applied, 6 killed.** Letting an unterminated
+reading win (round 7's behaviour), considering depth 0 only, treating any quote
+as a delimiter regardless of depth, letting a delimiter close a quote of a
+different kind, abandoning a truncated array, and removing the bound that keeps
+the candidate scan linear.
+
+**Mutation result for round 7: 4 applied, 4 killed.** Ignoring backslashes only
+(round 6), reading them as escapes only, taking the earlier end rather than the
+later, and an escape that consumes nothing. The first two are the load-bearing
+pair: each single reading is killed by the serialization the *other* one
+handles, which is the evidence that both are needed rather than one being a
+better guess.
+
+**Mutation result for round 6: 4 applied, 4 killed.** Reverting to the first
+`]`, removing quote tracking, letting any quote close any other, and abandoning
+an unterminated array. The third is the one worth noting: the apostrophe case
+could not kill it, because that mutation fails by making the span *too long*,
+which still redacts. It is killed instead by prose *after* the array —
+`{"authorization":["it's fine","Bearer abcdef"]} and the bearer announced
+victory` — where an over-long span destroys the sentence. That is the same
+defect this entire PR exists to fix, reachable through the new code.
+
+**Mutation result for round 5: 6 applied, 4 killed, 2 equivalent.** Killed: dropping the
+array clause, opening a span on any bracket without the gate, abandoning an
+unterminated array, and collapsing a span's end onto its start. The two
+survivors are reported as survivors because they are unfalsifiable rather than
+untested — restarting the span scan past a recorded span, and the `<=` the
+cursor advances on, produce identical output on every input, and differ only on
+a stopwatch at sizes far above a log line. They are kept as cheap insurance and
+the test says so rather than implying coverage it does not have.
+
+Validation: `npm run test:all` exits 0 (79 chained scripts), `scripts/recovery/preflight.sh
+--skip-status` exits 0.
+
 ## 2026-08-28 UTC - `API_KEYS` accepted any non-empty string as a credential
 
 Closes the first of the two directions #314 records. `authenticateRequest` built
