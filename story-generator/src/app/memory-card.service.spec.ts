@@ -73,6 +73,61 @@ describe('MemoryCardService', () => {
       expect(drafts.find(draft => draft.label === 'World card')?.title).toBe('The Obsidian Seal');
     });
 
+    it('derives a draft for every tracked character, thread, and artifact, not just the first of each', () => {
+      const drafts = service.deriveDrafts(createContinuityPanel({
+        characters: [
+          createCharacter({ id: 'char-mara', displayName: 'Mara' }),
+          createCharacter({ id: 'char-eli', displayName: 'Eli' }),
+          createCharacter({ id: 'char-rook', displayName: 'Rook' })
+        ],
+        activeThreads: [
+          createThread({ id: 'thread-truce', label: 'The dawn truce' }),
+          createThread({ id: 'thread-debt', label: 'The blood debt' })
+        ],
+        unresolvedArtifacts: [
+          createArtifact({ id: 'artifact-seal', name: 'The Obsidian Seal' }),
+          createArtifact({ id: 'artifact-key', name: 'The Rusted Key' })
+        ]
+      }));
+
+      expect(drafts.length).toBe(7);
+      expect(drafts.filter(draft => draft.label === 'Character card').map(draft => draft.title))
+        .toEqual(['Mara', 'Eli', 'Rook']);
+      expect(drafts.filter(draft => draft.label === 'Promise card').map(draft => draft.title))
+        .toEqual(['The dawn truce', 'The blood debt']);
+      expect(drafts.filter(draft => draft.label === 'World card').map(draft => draft.title))
+        .toEqual(['The Obsidian Seal', 'The Rusted Key']);
+      expect(drafts.map(draft => draft.id)).toEqual([
+        'memory-card-character-char-mara',
+        'memory-card-character-char-eli',
+        'memory-card-character-char-rook',
+        'memory-card-thread-thread-truce',
+        'memory-card-thread-thread-debt',
+        'memory-card-artifact-artifact-seal',
+        'memory-card-artifact-artifact-key'
+      ]);
+    });
+
+    it('tracks pinned and accepted state per draft independently when multiple share a category', () => {
+      service.pinDraft('memory-card-character-char-eli');
+      const panel = createContinuityPanel({
+        characters: [
+          createCharacter({ id: 'char-mara', displayName: 'Mara' }),
+          createCharacter({ id: 'char-eli', displayName: 'Eli' })
+        ]
+      });
+      service.acceptDraft('memory-card-character-char-mara', service.deriveDrafts(panel));
+
+      const drafts = service.deriveDrafts(panel);
+      const mara = drafts.find(draft => draft.title === 'Mara')!;
+      const eli = drafts.find(draft => draft.title === 'Eli')!;
+
+      expect(mara.accepted).toBeTrue();
+      expect(mara.pinned).toBeFalse();
+      expect(eli.pinned).toBeTrue();
+      expect(eli.accepted).toBeFalse();
+    });
+
     it('omits a draft when its title or detail is empty', () => {
       const drafts = service.deriveDrafts(createContinuityPanel({
         characters: [createCharacter({ currentGoal: '', summary: '', externalConflict: '' })]

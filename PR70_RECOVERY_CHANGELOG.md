@@ -4,6 +4,16 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-09-05 UTC - Memory card drafts stop capping at one per category (PR #337)
+
+`MemoryCardService.deriveDrafts` sliced `continuity.characters`, `activeThreads`, and `unresolvedArtifacts` to their first element before mapping, so the "suggested memory card" panel only ever offered a draft for the first tracked character, the first active thread, and the first unresolved artifact — every later one was silently discarded on every call, with no comment explaining the cap. `ContinuityPanelViewModel` types all three as full, growing arrays, and the template renders `memoryCardDrafts()` as an unbounded `*ngFor` list, so nothing about the data or the UI wanted a cap of one. Any story with more than one tracked character, thread, or artifact — most stories past the opening chapter — only ever surfaced one card per category to pin or accept, with no signal more existed. The existing spec only ever exercised one item per category, which is why this went unnoticed through the god-component extraction (PR #324) that created this file.
+
+Removed the three `.slice(0, 1)` calls so every tracked character, thread, and artifact produces its own draft, and added a doc comment on `deriveDrafts` explaining the defect, matching this file's existing comment style. Added two spec cases: one asserting all drafts surface (with correct ids and stable per-category ordering) when a category has multiple items, and one asserting pinned/accepted state is tracked per draft id rather than by position when a category has more than one entry.
+
+Posted to `#claude-routines` for critique before implementing; no response arrived in the review window. Codex's review of the initial push (`3095364`) found one issue, a documentation gap: this changelog entry was missing, which is the one finding fixed in this slice.
+
+Validation: `memory-card.service.spec.ts` 24/24 (was 21/21); full Angular karma suite 302/302 (was 300/300); `npm run test:all` clean.
+
 ## 2026-09-04 UTC - Continuation prompt stops rebuilding a cruder copy of state it already has (PR #333)
 
 `StoryService.continueChapter` has exactly one caller, `storyLabEngine.ts`, and that caller already refuses to call it without a full `StoryStateSnapshot` in hand. Despite that, `buildContinuationPrompt` threw the state away and rebuilt "who's in this story" and "what's still open" from raw chapter text with regex heuristics on every continuation, sitting beside the Continuity Courtroom's real, state-driven guidance in the same prompt — which was itself mislabeled `CREATIVE DIRECTION:` as though it were the reader's own optional color rather than a must-honor requirement. Full detail in `STORY_LAB_REAL_ENGINE_EXEC_PLAN.md`'s matching dated section; this entry is the running-log pointer the Documentation Update Map requires.

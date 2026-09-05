@@ -51,10 +51,25 @@ export class MemoryCardService {
     ...EMPTY_ACCEPTED_MEMORY_CARD_EDIT_DRAFT
   });
 
+  /**
+   * Build the "suggested memory card" drafts a reader can pin or accept, one
+   * per tracked character, active thread, and unresolved artifact.
+   *
+   * Each of the three arrays used to be cut with `.slice(0, 1)` before being
+   * mapped, so only the first character, first thread, and first artifact
+   * continuity was tracking ever became a draft — every later one was
+   * discarded, silently, on every call. `ContinuityPanelViewModel` types all
+   * three as full arrays that continuity tracking keeps growing, and the
+   * template renders the result as an unbounded `*ngFor` list, so nothing
+   * about the data or the UI wanted a cap of one; a story with three tracked
+   * characters only ever offered a card for the first, with no sign the other
+   * two existed. Removing the slice lets every tracked character, thread, and
+   * artifact surface its own draft, the way the panel was built to show them.
+   */
   deriveDrafts(continuity: ContinuityPanelViewModel): MemoryCardDraftItem[] {
     const pinnedDraftIds = this.pinnedMemoryCardDraftIds();
     const acceptedCardIds = new Set(this.acceptedMemoryCards().map(card => card.id));
-    const characterDrafts = continuity.characters.slice(0, 1).map(character => ({
+    const characterDrafts = continuity.characters.map(character => ({
       id: `memory-card-character-${character.id}`,
       label: 'Character card',
       title: character.displayName,
@@ -63,7 +78,7 @@ export class MemoryCardService {
       pinned: pinnedDraftIds.has(`memory-card-character-${character.id}`),
       accepted: acceptedCardIds.has(`memory-card-character-${character.id}`)
     }));
-    const threadDrafts = continuity.activeThreads.slice(0, 1).map(thread => ({
+    const threadDrafts = continuity.activeThreads.map(thread => ({
       id: `memory-card-thread-${thread.id}`,
       label: 'Promise card',
       title: thread.label,
@@ -72,7 +87,7 @@ export class MemoryCardService {
       pinned: pinnedDraftIds.has(`memory-card-thread-${thread.id}`),
       accepted: acceptedCardIds.has(`memory-card-thread-${thread.id}`)
     }));
-    const artifactDrafts = continuity.unresolvedArtifacts.slice(0, 1).map(artifact => ({
+    const artifactDrafts = continuity.unresolvedArtifacts.map(artifact => ({
       id: `memory-card-artifact-${artifact.id}`,
       label: 'World card',
       title: artifact.name,
