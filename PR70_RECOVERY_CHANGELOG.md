@@ -4,6 +4,16 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-09-05 UTC - `/api/health` stops being structurally unable to report anything but "healthy" (PR #338)
+
+`HealthPayload.status` was typed as the literal `'healthy'`, not a union, and the handler unconditionally set it regardless of actual system state. The only "check" it ran was `!!process.env['XAI_API_KEY']` — presence, not validity, the same class already fixed for `API_KEYS` in #315 — and it never looked at the rate-limit store or Story Lab job store at all, so an unsupported store mode or an unreachable `postgres` store could never surface on the one route an operator or uptime monitor actually polls to decide whether to page someone. `README.md` documented this route as returning "system status and service availability"; it returned neither.
+
+Widened `status` to `'healthy' | 'degraded'`, wired in `createRateLimitStoreConfig()` and `createStoryLabJobStoreConfig()` (the same cheap, no-network construction the real routes already use) to report each store's `mode`/`configured` state, and mark `degraded` only for a genuine misconfiguration: an unsupported mode value, or `postgres` mode with no reachable database. Falling back to the in-memory/non-durable default stays non-degraded, matching this app's intentional design — mirrors `grok: 'mock'` already being a non-error state. Degraded now answers `503` instead of `200` so a plain status-code uptime check catches it, not just the response body. Replaced the last unmigrated raw `console.error` in `api/` (outside `_lib`) with the redacting `logError`.
+
+Posted to `#claude-routines` for critique before implementing; no response arrived in the review window, so it shipped as planned.
+
+Validation: added `tests/health-route.test.ts` (6/6, registered as `npm run test:health-route` and wired into `test:all`); full `npm run test:all` clean; API typecheck (`tsc --noEmit` over `api/**/*.ts`, the exact preflight invocation) clean; `check-vercel-function-count.sh` 9/12, unchanged; `git diff --check` clean.
+
 ## 2026-09-05 UTC - Memory card drafts stop capping at one per category (PR #337)
 
 `MemoryCardService.deriveDrafts` sliced `continuity.characters`, `activeThreads`, and `unresolvedArtifacts` to their first element before mapping, so the "suggested memory card" panel only ever offered a draft for the first tracked character, the first active thread, and the first unresolved artifact — every later one was silently discarded on every call, with no comment explaining the cap. `ContinuityPanelViewModel` types all three as full, growing arrays, and the template renders `memoryCardDrafts()` as an unbounded `*ngFor` list, so nothing about the data or the UI wanted a cap of one. Any story with more than one tracked character, thread, or artifact — most stories past the opening chapter — only ever surfaced one card per category to pin or accept, with no signal more existed. The existing spec only ever exercised one item per category, which is why this went unnoticed through the god-component extraction (PR #324) that created this file.
