@@ -1,6 +1,15 @@
 // Created: 2025-10-31 06:28
 import { CommonModule, isPlatformBrowser } from '@angular/common';
-import { Component, OnInit, PLATFORM_ID, SecurityContext, inject, signal } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  OnInit,
+  PLATFORM_ID,
+  SecurityContext,
+  ViewChild,
+  inject,
+  signal
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer } from '@angular/platform-browser';
 import { RouterLink } from '@angular/router';
@@ -22,6 +31,7 @@ import {
   WORD_BUDGETS,
   WordBudget
 } from '../contracts';
+import { ErrorLoggingService } from '../error-logging';
 import { escapeHtml } from '../story-html-exporter';
 import { StoryService } from '../story.service';
 import { GenerationLogic, GenerationLogicService } from './generation-logic.service';
@@ -39,6 +49,34 @@ import { STORY_LAB_THEME_SEEDS } from '../../../../shared/storyLabThemeSeeds';
 
 type TestResult = ProvingGroundsTestResult;
 type StoredTestResult = StoredProvingGroundsTestResult;
+
+/**
+ * What a stored test result's `promptPreview` says for a run that sent no
+ * `narrativeDirectives` override — the unmodified "Current Production"
+ * baseline (see `resolveNarrativeDirectives`).
+ *
+ * `getFilledPrompts()` still computes a system/user prompt for that run (the
+ * page needs one for the request's `logline`/`themes`, and `viewPrompts()`
+ * shows it on request), but the server never receives it: the real production
+ * system prompt runs instead, with its own independently-drawn author styles,
+ * beat structure, and Chekhov ledger. Storing the client's unsent draw as
+ * `promptPreview` would attribute the generated prose to a prompt the model
+ * never saw — the same "documented capability, no matching implementation"
+ * shape this whole page exists to catch, one field deeper. This says so
+ * instead of guessing at text nobody can reconstruct after the fact.
+ */
+const BASELINE_PROMPT_PREVIEW_NOTICE = 'This run sent no narrativeDirectives override, so the live production '
+  + 'prompt ran as-is — including its own independently-drawn author styles, beat structure, and Chekhov ledger. '
+  + 'The prompt this page would otherwise show here was never sent to the model, so it is not shown as if it were.';
+
+/**
+ * Elements a reader can move keyboard focus to, for the prompt preview
+ * panel's focus trap below — the same selector and trap
+ * `StoryLabProfilePanelComponent.onDialogKeydown` uses, so this page's one
+ * other modal doesn't invent a second way to do the same job.
+ */
+const FOCUSABLE_SELECTOR = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), '
+  + 'textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
  * How many past runs the history keeps. Read by the restore as well as by the
@@ -104,8 +142,11 @@ export class ProvingGroundsComponent implements OnInit {
   private readonly evaluationService = inject(PromptEvaluationService);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly generationLogicService = inject(GenerationLogicService);
+  private readonly errorLogging = inject(ErrorLoggingService);
   private readonly isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
+  @ViewChild('promptPreviewPanel') private readonly promptPreviewPanelRef?: ElementRef<HTMLElement>;
   private idSequence = 0;
+  private lastFocusedElementBeforePreview: HTMLElement | null = null;
 
   readonly isGenerating = signal(false);
   readonly isEvaluating = signal(false);
@@ -115,6 +156,17 @@ export class ProvingGroundsComponent implements OnInit {
   readonly comparisonMode = signal(false);
   readonly selectedComparisons = signal<TestResult[]>([]);
   readonly currentGenerationLogic = signal<GenerationLogic | null>(null);
+  /**
+   * The prompts `viewPrompts()` is currently showing, or `null` when the
+   * preview panel is closed.
+   *
+   * This used to be `globalThis.alert()` — a ~10,000-character system prompt
+   * dumped into a browser `alert()`, which truncates, cannot be scrolled or
+   * selected sensibly on most platforms, and is a no-op during SSR. A signal
+   * bound to a template panel is readable, copyable, and safe to set from
+   * anywhere `isBrowser` used to guard.
+   */
+  readonly promptPreview = signal<{ templateName: string; system: string; user: string } | null>(null);
 
   creature: CreatureArchetype = 'vampire';
   selectedThemeIds: string[] = ['forbidden_love', 'obsession'];
@@ -277,12 +329,71 @@ export class ProvingGroundsComponent implements OnInit {
   }
 
   viewPrompts(): void {
-    const prompts = this.getFilledPrompts();
-    if (!prompts || !this.isBrowser) {
+    const { template, prompts } = this.resolveCurrentRequest();
+    if (!template || !prompts) {
       return;
     }
 
-    globalThis.alert(`SYSTEM PROMPT:\n\n${prompts.system}\n\n${'='.repeat(80)}\n\nUSER PROMPT:\n\n${prompts.user}`);
+    this.lastFocusedElementBeforePreview = this.isBrowser ? (document.activeElement as HTMLElement | null) : null;
+    this.promptPreview.set({ templateName: template.name, system: prompts.system, user: prompts.user });
+
+    if (this.isBrowser) {
+      // `setTimeout` rather than an `effect` watching `promptPreview()`: this
+      // component's own signal-change effects run before Angular refreshes
+      // `@if`-conditional `ViewChild` queries against the newly-created DOM,
+      // so `promptPreviewPanelRef` was still `undefined` the instant an
+      // effect saw the signal turn non-null. Queuing this after the current
+      // task — which includes this synchronous call and the change-detection
+      // pass a template event binding triggers right after it returns — is
+      // what guarantees the panel exists by the time this runs.
+      setTimeout(() => this.promptPreviewPanelRef?.nativeElement.focus());
+    }
+  }
+
+  closePromptPreview(): void {
+    this.promptPreview.set(null);
+    this.lastFocusedElementBeforePreview?.focus();
+    this.lastFocusedElementBeforePreview = null;
+  }
+
+  /**
+   * A minimal focus trap, identical to
+   * `StoryLabProfilePanelComponent.onDialogKeydown`: Tab from the last
+   * focusable control wraps to the first, and Shift+Tab from the first wraps
+   * to the last, so keyboard focus cannot leave the panel into the
+   * configuration controls behind it while it's open.
+   */
+  onPromptPreviewKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      this.closePromptPreview();
+      return;
+    }
+
+    if (event.key !== 'Tab') {
+      return;
+    }
+
+    const focusable = this.promptPreviewPanelRef?.nativeElement.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
+    if (!focusable || focusable.length === 0) {
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement;
+    // The panel itself is what `viewPrompts()` focuses on open, not `first`
+    // — so the very first Shift+Tab, before the reader has tabbed anywhere,
+    // sees `active === promptPreviewPanelRef.nativeElement` rather than `first`.
+    const isAtBackwardBoundary = active === first || active === this.promptPreviewPanelRef?.nativeElement;
+
+    if (event.shiftKey && isAtBackwardBoundary) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
   }
 
   sanitizeHtml(html: string): string {
@@ -308,25 +419,29 @@ export class ProvingGroundsComponent implements OnInit {
       return;
     }
 
-    const template = this.selectedPromptTemplate();
-    const prompts = this.getFilledPrompts();
+    const { template, prompts, directives, overflow } = this.resolveCurrentRequest();
     const themes = this.selectedThemes;
     if (!template || !prompts || !themes.length) {
       this.statusMessage = 'Choose a prompt template and at least one theme.';
       return;
     }
 
-    const input = this.buildGenerationInput(prompts, themes);
-    // The prompts under test travel to the API inside `narrativeDirectives`,
-    // which the blueprint routes cap. Asking first is what keeps a test the
-    // route is certain to refuse from being reported as a generation failure —
-    // and names the two things the reader can actually change.
-    const overflow = describeNarrativeDirectivesOverflow(input.narrativeDirectives ?? '');
+    // Asking first is what keeps a test the route is certain to refuse from
+    // being reported as a generation failure — and names the thing the reader
+    // can change.
     if (overflow) {
       this.statusMessage = `The "${template.name}" template does not fit: ${overflow} `
-        + 'Choose a shorter template, trim the custom prompt, or leave the generation logic out of this run.';
+        + 'Choose a shorter template or trim the custom prompt.';
       return;
     }
+
+    const input = this.buildGenerationInput(themes, directives);
+    // A real generation gets the request it was just shown and warned about —
+    // `resolveCurrentRequest()`'s cache is exactly that request — and then the
+    // cache is cleared, so the *next* click (even against this same
+    // configuration) draws its own fresh Chekhov ledger rather than repeating
+    // this one, matching how production draws fresh per generation.
+    this.currentRequestCache = null;
 
     this.isGenerating.set(true);
     this.statusMessage = 'Generating Story Lab sample...';
@@ -340,14 +455,20 @@ export class ProvingGroundsComponent implements OnInit {
           return;
         }
 
-        const testResult = this.createTestResult(result.data, template, prompts, Date.now() - startTime);
+        const testResult = this.createTestResult(result.data, template, prompts, directives, Date.now() - startTime);
         this.currentTest.set(testResult);
         this.addToHistory(testResult);
-        this.statusMessage = `Generated ${testResult.chapterCount} chapter${testResult.chapterCount === 1 ? '' : 's'} for comparison.`;
+        const chapterWord = testResult.chapterCount === 1 ? 'chapter' : 'chapters';
+        this.statusMessage = testResult.isMockGeneration
+          ? 'Generated with offline mock chapters — not real AI output. Do not use this result for prompt comparisons.'
+          : `Generated ${testResult.chapterCount} ${chapterWord} for comparison.`;
         this.isGenerating.set(false);
       },
       error: error => {
-        console.error('Error generating story:', error);
+        // `StoryService.beginStory()` already logs this through
+        // `ErrorLoggingService` (`handleHttpError`) before rethrowing it —
+        // logging it again here would double every failed generation in the
+        // Debug Errors panel.
         this.statusMessage = this.readApiErrorMessage(error)
           ?? 'Story generation failed. Check the debug panel or console for details.';
         this.isGenerating.set(false);
@@ -387,7 +508,7 @@ export class ProvingGroundsComponent implements OnInit {
       // API is unavailable" — described the fallback that had already happened
       // one line up, which is why nothing on this page ever said what went
       // wrong: the reason lives on the evaluation now, not here.
-      console.error('Error evaluating story:', error);
+      this.errorLogging.logError(error, 'ProvingGroundsComponent.evaluateStory');
       this.statusMessage = 'Evaluation could not be run.';
     } finally {
       this.isEvaluating.set(false);
@@ -461,12 +582,11 @@ export class ProvingGroundsComponent implements OnInit {
   }
 
   private buildGenerationInput(
-    prompts: { system: string; user: string },
-    themes: ThemeSeed[]
+    themes: ThemeSeed[],
+    narrativeDirectives: string | undefined
   ): StoryGenerationSeam['input'] {
     const logline = this.userInput.trim()
       || `${this.creature} romance exploring ${themes.map(theme => theme.label.toLowerCase()).join(', ')}`;
-    const logic = this.currentGenerationLogic();
 
     return {
       creature: this.creature,
@@ -482,22 +602,142 @@ export class ProvingGroundsComponent implements OnInit {
         intimacyBoundary: 'fade_to_black',
         noGoContent: ''
       },
-      narrativeDirectives: [
-        'PROVING GROUNDS TEST',
-        prompts.system,
-        prompts.user,
-        logic ? this.generationLogicService.summarizeLogic(logic) : ''
-      ].filter(Boolean).join('\n\n')
+      narrativeDirectives
     };
+  }
+
+  /**
+   * What `resolveCurrentRequest` last answered for, and the answer — so
+   * everything that needs "the request this configuration would currently
+   * send" (the live overflow warning, the Generate button's `[disabled]`,
+   * View Prompts, and Generate itself) reads the *same* draw instead of each
+   * calling `getFilledPrompts()` on their own.
+   *
+   * That used to be three separate calls. `getFilledPrompts()` draws a new
+   * Chekhov ledger every time for the "Current Production" template, on
+   * purpose — `CHEKHOV_LEDGER_TOKEN`'s own doc explains why a real run
+   * shouldn't plant the same two elements every time — so three independent
+   * calls in close succession could each disagree: the overflow banner could
+   * warn about a length the button's `[disabled]` never saw (Angular's
+   * `NG0100` dev-mode check caught exactly this the first time), and worse,
+   * `generateStory()` could validate one draw and then send a request built
+   * from a second, longer one — passing a guard the actual request would have
+   * failed, or refusing one that would have fit.
+   *
+   * Cleared once a real generation is sent (see `generateStory()`), so the
+   * *next* click still draws its own fresh ledger — this cache is "the
+   * request for the configuration on screen right now", not a standing
+   * substitute for drawing at all.
+   */
+  private currentRequestCache: {
+    signature: string;
+    prompts: { system: string; user: string } | null;
+    directives: string | undefined;
+    overflow: string | null;
+  } | null = null;
+
+  /**
+   * The request the reader's current configuration would send, computed once
+   * per distinct configuration and reused until something in the signature
+   * below changes.
+   */
+  private resolveCurrentRequest(): {
+    template: PromptTemplate | null;
+    prompts: { system: string; user: string } | null;
+    directives: string | undefined;
+    overflow: string | null;
+  } {
+    const template = this.selectedPromptTemplate();
+    if (!template) {
+      return { template: null, prompts: null, directives: undefined, overflow: null };
+    }
+
+    const signature = JSON.stringify([
+      template.id,
+      this.useCustomPrompts,
+      this.useCustomPrompts ? this.customSystemPrompt : null,
+      this.useCustomPrompts ? this.customUserPrompt : null,
+      this.creature,
+      this.selectedThemeIds,
+      this.spicyLevel,
+      this.wordCount,
+      this.userInput
+    ]);
+
+    if (this.currentRequestCache?.signature === signature) {
+      const { prompts, directives, overflow } = this.currentRequestCache;
+      return { template, prompts, directives, overflow };
+    }
+
+    const prompts = this.getFilledPrompts();
+    const directives = prompts ? this.resolveNarrativeDirectives(prompts, template) : undefined;
+    const overflow = directives ? describeNarrativeDirectivesOverflow(directives) : null;
+    this.currentRequestCache = { signature, prompts, directives, overflow };
+    return { template, prompts, directives, overflow };
+  }
+
+  /**
+   * What this run should send as `narrativeDirectives`, or `undefined` to send
+   * none at all.
+   *
+   * The unmodified "Current Production" template is the one case that sends
+   * nothing: its whole claim is that it's the prompt every other story on this
+   * app is generated from, and that prompt already runs unconditionally on the
+   * server (`StoryService.buildProductionSystemPrompt`). Packing it into
+   * `narrativeDirectives` restated a prompt the request was already going to
+   * get, at nine times this field's 1,200-character cap — which is why the
+   * page's own default configuration could never generate a single story. A
+   * request with no override *is* what "current production" means, and it can
+   * now actually run.
+   *
+   * Every other case — an experimental template, or "Current Production" with
+   * `useCustomPrompts` on, since editing its text is what turns a baseline into
+   * a variant — sends the system and user prompt under test. The literal
+   * `'PROVING GROUNDS TEST'` label and the generation-logic summary this used
+   * to also carry are gone: the label was three words of the 1,200-character
+   * budget spent on identifying the request rather than testing a prompt, and
+   * the logic summary described a beat structure and author styles the server
+   * draws independently and was never going to honor (see
+   * `currentGenerationLogic`'s panel below) — sending it did not make the
+   * summarized run any more likely to happen, it only made every experimental
+   * template that much closer to this same cap.
+   */
+  private resolveNarrativeDirectives(
+    prompts: { system: string; user: string },
+    template: PromptTemplate
+  ): string | undefined {
+    if (template.id === 'production' && !this.useCustomPrompts) {
+      return undefined;
+    }
+
+    return [prompts.system, prompts.user].filter(Boolean).join('\n\n') || undefined;
+  }
+
+  /**
+   * Whether the `narrativeDirectives` this configuration would send exceeds
+   * the blueprint route's cap, and by how much — the live UI's warning,
+   * reading the same cached request `generateStory()` sends.
+   */
+  narrativeDirectivesOverflowMessage(): string | null {
+    return this.resolveCurrentRequest().overflow;
   }
 
   private createTestResult(
     payload: StoryIterationPayload,
     template: PromptTemplate,
     prompts: { system: string; user: string },
+    narrativeDirectives: string | undefined,
     generationTime: number
   ): TestResult {
     const chapters = payload.batch.chapters;
+    // `prompts` is what this page filled in and never sent when
+    // `narrativeDirectives` is `undefined` (the unmodified production
+    // baseline) — see `resolveNarrativeDirectives`. Storing it here anyway
+    // would report the generated prose as having come from a specific prompt
+    // the model was never given.
+    const promptPreview = narrativeDirectives === undefined
+      ? { system: BASELINE_PROMPT_PREVIEW_NOTICE, user: BASELINE_PROMPT_PREVIEW_NOTICE }
+      : prompts;
     return {
       id: this.generateId(),
       timestamp: new Date(),
@@ -508,12 +748,18 @@ export class ProvingGroundsComponent implements OnInit {
         wordCount: this.wordCount,
         userInput: this.userInput,
         promptTemplate: template,
-        promptPreview: prompts
+        promptPreview
       },
       generatedStory: this.renderChapters(chapters),
       generationTime,
       chapterCount: chapters.length,
-      totalWordCount: payload.batch.totalWordCount
+      totalWordCount: payload.batch.totalWordCount,
+      // 'custom' is `buildGenesisResponse`'s canned mock chapters, served
+      // when no model provider is configured — fixed prose that ignores
+      // whatever prompt was actually under test. Comparing that against a
+      // real run's output would be comparing two different things while
+      // this page claims to be comparing one.
+      isMockGeneration: payload.telemetry.engine === 'custom'
     };
   }
 
@@ -608,7 +854,7 @@ export class ProvingGroundsComponent implements OnInit {
     try {
       localStorage.setItem('provingGrounds_testHistory', JSON.stringify(this.testHistory()));
     } catch (error) {
-      console.error('Failed to save test history:', error);
+      this.errorLogging.logError(error, 'ProvingGroundsComponent.saveTestHistory');
     }
   }
 
@@ -635,7 +881,7 @@ export class ProvingGroundsComponent implements OnInit {
           .slice(0, MAX_TEST_HISTORY_ENTRIES)
       );
     } catch (error) {
-      console.error('Failed to load test history:', error);
+      this.errorLogging.logError(error, 'ProvingGroundsComponent.loadTestHistory');
     }
   }
 }

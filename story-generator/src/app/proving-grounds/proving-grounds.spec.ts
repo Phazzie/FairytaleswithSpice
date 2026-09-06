@@ -1,17 +1,75 @@
 // Created: 2026-06-21 08:56
-import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { HttpClientTestingModule } from '@angular/common/http/testing';
+import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
 import {
   CHAPTER_BATCH_SIZES,
   CREATURE_ARCHETYPES,
   ProvingGroundsTestResult,
   SPICY_LEVELS,
+  StoryIterationPayload,
   WORD_BUDGETS
 } from '../contracts';
 import { ProvingGroundsComponent } from './proving-grounds';
+import { ErrorLoggingService } from '../error-logging';
 import { STORY_BLUEPRINT_LIMITS } from '../../../../shared/storyBlueprintLimits';
 import { STORY_LAB_THEME_SEEDS } from '../../../../shared/storyLabThemeSeeds';
+
+function createStoryIterationPayload(engine: 'gpt' | 'grok' | 'custom' = 'gpt'): StoryIterationPayload {
+  const now = new Date().toISOString();
+  return {
+    summary: {
+      storyId: 'story-123',
+      title: 'Crimson Covenant',
+      synopsis: 'A pact of blood entwines lovers and rivals.',
+      tone: 'dark_romance',
+      spicyLevel: 3,
+      createdAt: now,
+      updatedAt: now
+    },
+    batch: {
+      chapters: [
+        {
+          chapterId: 'chapter-1',
+          chapterNumber: 1,
+          title: 'Moonlit Ultimatum',
+          htmlContent: '<p>Content</p>',
+          rawContent: '<p>Content</p>',
+          summary: 'An impossible choice is presented.',
+          wordCount: 900,
+          hasCliffhanger: true,
+          delta: {
+            introducedCharacters: [],
+            resolvedThreads: [],
+            escalatedThreads: [],
+            foreshadowedArtifacts: [],
+            continuityFlags: []
+          }
+        }
+      ],
+      totalWordCount: 900,
+      suggestedNextPrompts: []
+    },
+    state: {
+      storyId: 'story-123',
+      revision: 1,
+      characters: [],
+      threads: [],
+      artifacts: [],
+      beats: [],
+      continuityWarnings: [],
+      narrativeVoice: 'Whispers in velvet',
+      lastUpdatedAt: now
+    },
+    telemetry: {
+      engine,
+      totalLatencyMs: 2000,
+      averageChapterLatencyMs: 2000,
+      tokensConsumed: 1200,
+      retryCount: 0
+    }
+  };
+}
 
 function createEvaluatedResult(): ProvingGroundsTestResult {
   return {
@@ -40,6 +98,7 @@ function createEvaluatedResult(): ProvingGroundsTestResult {
     generationTime: 1200,
     chapterCount: 1,
     totalWordCount: 900,
+    isMockGeneration: false,
     aiEvaluation: {
       score: 82,
       strengths: ['Strong hook.'],
@@ -116,6 +175,7 @@ function getCurrentEvaluateButton(fixture: ComponentFixture<ProvingGroundsCompon
 describe('ProvingGroundsComponent', () => {
   let fixture: ComponentFixture<ProvingGroundsComponent>;
   let component: ProvingGroundsComponent;
+  let httpMock: HttpTestingController;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -125,11 +185,13 @@ describe('ProvingGroundsComponent', () => {
 
     fixture = TestBed.createComponent(ProvingGroundsComponent);
     component = fixture.componentInstance;
+    httpMock = TestBed.inject(HttpTestingController);
     fixture.detectChanges();
   });
 
   afterEach(() => {
     localStorage.removeItem('provingGrounds_testHistory');
+    httpMock.verify();
   });
 
   it('renders deterministic heuristic report dimensions for evaluated stories', () => {
@@ -373,5 +435,203 @@ describe('ProvingGroundsComponent', () => {
     expect(component.currentTest()).toBeNull();
     expect(component.testHistory().length).toBe(1);
     expect(component.testHistory()[0].id).toBe('delete-survivor');
+  });
+
+  // The page opened on the "Current Production" template by default and packed
+  // its whole system+user prompt into `narrativeDirectives`, which the
+  // blueprint routes cap at 1,200 characters. The real prompt runs to about
+  // 10,500 — so the very first thing a reader could do on this page, pressing
+  // Generate with nothing changed, always hit that cap and never ran.
+  it('sends no narrativeDirectives override for the unmodified "Current Production" baseline, so it can actually generate', () => {
+    expect(component.selectedPromptTemplate()?.id).toBe('production');
+    expect(component.narrativeDirectivesOverflowMessage()).toBeNull();
+
+    const generateButton = getGenerateButton(fixture);
+    expect(generateButton.disabled).toBeFalse();
+
+    component.generateStory();
+
+    const req = httpMock.expectOne('/api/story-lab/stories');
+    expect(req.request.body.narrativeDirectives).toBeUndefined();
+    req.flush({ success: true, data: createStoryIterationPayload() });
+  });
+
+  // Experimental templates still travel inside `narrativeDirectives` — the
+  // route has no seam for a real system-prompt override — but the literal
+  // `'PROVING GROUNDS TEST'` label and the generation-logic summary used to
+  // ride along too, spending part of the same 1,200-character budget on text
+  // that was not the prompt under test.
+  it('sends only the system and user prompt as narrativeDirectives for an experimental template', () => {
+    const concise = component.promptTemplates.find(template => template.id === 'concise')!;
+    component.selectPromptTemplate(concise);
+    fixture.detectChanges();
+
+    const prompts = component.getFilledPrompts()!;
+    component.generateStory();
+
+    const req = httpMock.expectOne('/api/story-lab/stories');
+    expect(req.request.body.narrativeDirectives).toBe(`${prompts.system}\n\n${prompts.user}`);
+    expect(req.request.body.narrativeDirectives).not.toContain('PROVING GROUNDS TEST');
+    req.flush({ success: true, data: createStoryIterationPayload() });
+  });
+
+  // `buildGenesisResponse()`'s canned mock chapters (served when no model
+  // provider is configured) ignore whatever prompt was under test — Codex's
+  // review caught that a mock result was stored and comparable exactly like
+  // a real one, with nothing marking it as such.
+  it('marks a result generated from mock chapters instead of comparing it as a real run', () => {
+    component.generateStory();
+
+    const req = httpMock.expectOne('/api/story-lab/stories');
+    req.flush({ success: true, data: createStoryIterationPayload('custom') });
+
+    const stored = component.currentTest();
+    expect(stored!.isMockGeneration).toBeTrue();
+    expect(component.statusMessage.toLowerCase()).toContain('mock');
+
+    fixture.detectChanges();
+    expect(getByTestId(fixture, 'mock-generation-badge')).withContext(
+      'the current-test view should flag a mock generation'
+    ).toBeTruthy();
+  });
+
+  it('does not mark a real generation as mock', () => {
+    component.generateStory();
+
+    const req = httpMock.expectOne('/api/story-lab/stories');
+    req.flush({ success: true, data: createStoryIterationPayload('gpt') });
+
+    expect(component.currentTest()!.isMockGeneration).toBeFalse();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="mock-generation-badge"]')).toBeNull();
+  });
+
+  // `StoryService.beginStory()` already logs an HTTP failure through
+  // `ErrorLoggingService` (`handleHttpError`) before rethrowing it — Codex's
+  // review caught that this component's own error handler logged the same
+  // error a second time, doubling every failed generation in the Debug
+  // Errors panel.
+  it('does not log a failed generation a second time on top of StoryService\'s own logging', () => {
+    const errorLogging = TestBed.inject(ErrorLoggingService);
+    spyOn(errorLogging, 'logError').and.callThrough();
+
+    component.generateStory();
+
+    const req = httpMock.expectOne('/api/story-lab/stories');
+    req.flush({ success: false, error: { code: 'GENERATION_FAILED', message: 'boom' } }, { status: 500, statusText: 'Server Error' });
+
+    // `logInfo` is itself a thin wrapper around `logError` (severity
+    // 'info') — `StoryService.beginStory()` calls that once just to record
+    // the request starting, unrelated to this failure. What must not
+    // double is the *error*-severity call `handleHttpError` makes.
+    const errorSeverityCalls = (errorLogging.logError as jasmine.Spy).calls.all()
+      .filter(call => (call.args[2] ?? 'error') === 'error');
+    expect(errorSeverityCalls).toHaveSize(1);
+    expect(errorSeverityCalls[0].args[1]).toBe('StoryService.beginStory');
+  });
+
+  // Editing the "Current Production" template's own text is what turns it from
+  // a baseline into a variant: the reader is no longer comparing against what
+  // the app actually sends, so it has to go through the same capped field
+  // every other template does.
+  it('treats "Current Production" as a variant once custom prompt editing is turned on, and reports the resulting overflow', () => {
+    component.useCustomPrompts = true;
+    fixture.detectChanges();
+
+    const overflow = component.narrativeDirectivesOverflowMessage();
+    expect(overflow).toContain(`this API accepts ${STORY_BLUEPRINT_LIMITS.maxNarrativeDirectivesLength}`);
+
+    const generateButton = getGenerateButton(fixture);
+    expect(generateButton.disabled).toBeTrue();
+
+    const warning = getByTestId(fixture, 'narrative-directives-overflow');
+    expect(warning.textContent).toContain(overflow);
+
+    component.generateStory();
+    httpMock.expectNone('/api/story-lab/stories');
+  });
+
+  // `viewPrompts()` used to hand a ~10,000-character prompt to
+  // `globalThis.alert()`, which truncates on most platforms, cannot be
+  // scrolled or selected, and is a no-op during SSR.
+  it('shows a closable prompt preview panel instead of alert() when View Prompts is clicked', () => {
+    spyOn(window, 'alert');
+
+    getByTestId(fixture, 'view-prompts').click();
+    fixture.detectChanges();
+
+    expect(window.alert).not.toHaveBeenCalled();
+    // Read back from the signal `viewPrompts()` set, not a second
+    // `getFilledPrompts()` call: the "Current Production" template draws a
+    // fresh random Chekhov ledger on every call, by design (see
+    // `resolveNarrativeDirectives`'s doc), so a second call here would assert
+    // the panel against a draw that never rendered.
+    const preview = component.promptPreview();
+    expect(preview).not.toBeNull();
+    expect(getByTestId(fixture, 'prompt-preview-system').textContent).toBe(preview!.system);
+    expect(getByTestId(fixture, 'prompt-preview-user').textContent).toBe(preview!.user);
+
+    getByTestId(fixture, 'close-prompt-preview').click();
+    fixture.detectChanges();
+
+    expect(component.promptPreview()).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="prompt-preview-system"]')).toBeNull();
+  });
+
+  // `aria-modal="true"` alone doesn't move focus, trap it, or support Escape.
+  // Codex's review of the initial push flagged exactly this: opening the
+  // panel left focus on the trigger button, so Tab kept walking through the
+  // configuration controls behind the overlay before ever reaching Close.
+  it('moves keyboard focus into the prompt preview panel on open, and restores it to the trigger on close', fakeAsync(() => {
+    const viewPromptsButton = getByTestId(fixture, 'view-prompts');
+    viewPromptsButton.focus();
+    expect(document.activeElement).toBe(viewPromptsButton);
+
+    viewPromptsButton.click();
+    fixture.detectChanges();
+    tick();
+
+    const panel: HTMLElement | null = fixture.nativeElement.querySelector('dialog');
+    expect(panel).withContext('the prompt preview panel should render').toBeTruthy();
+    expect(document.activeElement).toBe(panel);
+
+    getByTestId(fixture, 'close-prompt-preview').click();
+    fixture.detectChanges();
+
+    expect(document.activeElement).toBe(viewPromptsButton);
+  }));
+
+  it('closes the prompt preview panel on Escape', fakeAsync(() => {
+    getByTestId(fixture, 'view-prompts').click();
+    fixture.detectChanges();
+    tick();
+
+    const panel: HTMLElement = fixture.nativeElement.querySelector('dialog');
+    panel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    fixture.detectChanges();
+
+    expect(component.promptPreview()).toBeNull();
+  }));
+
+  // Codex's review also caught that a stored result's `promptPreview` still
+  // held the client's independently-filled prompt even for the unmodified
+  // "Current Production" baseline, which — since this PR — sends no
+  // `narrativeDirectives` override at all. That text was never sent to the
+  // model, so attributing the generated story to it would be exactly the
+  // "documented capability, no matching implementation" defect this whole
+  // page exists to catch, one field deeper.
+  it('records an honest baseline notice instead of the discarded client-drawn prompt for an unmodified production result', () => {
+    expect(component.selectedPromptTemplate()?.id).toBe('production');
+
+    component.generateStory();
+
+    const req = httpMock.expectOne('/api/story-lab/stories');
+    req.flush({ success: true, data: createStoryIterationPayload() });
+
+    const stored = component.currentTest();
+    expect(stored).not.toBeNull();
+    expect(stored!.configuration.promptPreview.system).not.toContain('PROTAGONIST:');
+    expect(stored!.configuration.promptPreview.system).toBe(stored!.configuration.promptPreview.user);
+    expect(stored!.configuration.promptPreview.system.toLowerCase()).toContain('no narrativedirectives override');
   });
 });

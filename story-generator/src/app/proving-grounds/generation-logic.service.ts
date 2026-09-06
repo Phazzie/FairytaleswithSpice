@@ -167,21 +167,6 @@ export class GenerationLogicService {
     };
   }
 
-  summarizeLogic(logic: GenerationLogic): string {
-    const authorSummary = logic.selectedAuthors
-      .map(author => `${author.author} (${author.trait})`)
-      .join('; ') || 'none selected';
-    const chekovSummary = logic.chekovElements
-      .map(element => element.description)
-      .join('; ');
-
-    return [
-      `Author styles: ${authorSummary}.`,
-      `Beat structure: ${logic.selectedBeatStructure.name} - ${logic.selectedBeatStructure.beats}.`,
-      `Chekov elements: ${chekovSummary}.`
-    ].join('\n');
-  }
-
   private shuffle<T>(items: readonly T[]): T[] {
     const shuffled = [...items];
     for (let i = shuffled.length - 1; i > 0; i--) {

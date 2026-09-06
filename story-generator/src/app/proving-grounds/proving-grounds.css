@@ -468,7 +468,8 @@
   margin: 0 0 1.5rem;
   color: #c084fc;
 }
-.mock-evaluation-notice {
+.mock-evaluation-notice,
+.narrative-directives-warning {
   margin: 0 0 1.5rem;
   padding: 0.75rem 1rem;
   background: #7f1d1d4d;
@@ -478,11 +479,15 @@
 }
 /* The route's own sentence about why it refused, on its own line: it is the
    actionable half of the notice, and it is not part of the warning wording. */
-.mock-evaluation-reason {
+.mock-evaluation-reason,
+.narrative-directives-warning-detail {
   display: block;
   margin-top: 0.35rem;
   font-weight: 400;
   font-style: italic;
+}
+.narrative-directives-warning {
+  margin: 0.75rem 0 0;
 }
 .score-display {
   display: flex;
@@ -829,4 +834,69 @@
   .evaluation-grid {
     grid-template-columns: 1fr;
   }
+}
+.prompt-preview-overlay {
+  position: fixed;
+  inset: 0;
+  background: #000000b3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  z-index: 100;
+}
+.prompt-preview-panel {
+  /* Overrides a `<dialog>` element's own UA-stylesheet defaults (absolute
+     positioning, its own border/padding/color/background) so it lays out and
+     looks exactly like the plain container it would otherwise be, inside the
+     flex-centered overlay above. */
+  position: relative;
+  margin: 0;
+  padding: 0;
+  color: inherit;
+  background: #16213e;
+  border: 1px solid #a855f74d;
+  border-radius: 12px;
+  max-width: 900px;
+  width: 100%;
+  max-height: calc(100vh - 4rem);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 40px #000000b3;
+}
+.prompt-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem;
+  border-bottom: 1px solid #a855f74d;
+}
+.prompt-preview-header h2 {
+  margin: 0;
+  color: #a855f7;
+  font-size: 1.3rem;
+}
+.prompt-preview-body {
+  padding: 1.5rem;
+  overflow-y: auto;
+}
+.prompt-preview-body h3 {
+  color: #c084fc;
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+.prompt-preview-text {
+  background: #0000004d;
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 0 0 1.5rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #e0e0e0;
+}
+.prompt-preview-text:last-child {
+  margin-bottom: 0;
 }
