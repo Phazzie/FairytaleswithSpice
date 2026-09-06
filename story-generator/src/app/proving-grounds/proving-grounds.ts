@@ -22,6 +22,7 @@ import {
   WORD_BUDGETS,
   WordBudget
 } from '../contracts';
+import { ErrorLoggingService } from '../error-logging';
 import { escapeHtml } from '../story-html-exporter';
 import { StoryService } from '../story.service';
 import { GenerationLogic, GenerationLogicService } from './generation-logic.service';
@@ -104,6 +105,7 @@ export class ProvingGroundsComponent implements OnInit {
   private readonly evaluationService = inject(PromptEvaluationService);
   private readonly sanitizer = inject(DomSanitizer);
   private readonly generationLogicService = inject(GenerationLogicService);
+  private readonly errorLogging = inject(ErrorLoggingService);
   private readonly isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
   private idSequence = 0;
 
@@ -115,6 +117,17 @@ export class ProvingGroundsComponent implements OnInit {
   readonly comparisonMode = signal(false);
   readonly selectedComparisons = signal<TestResult[]>([]);
   readonly currentGenerationLogic = signal<GenerationLogic | null>(null);
+  /**
+   * The prompts `viewPrompts()` is currently showing, or `null` when the
+   * preview panel is closed.
+   *
+   * This used to be `globalThis.alert()` — a ~10,000-character system prompt
+   * dumped into a browser `alert()`, which truncates, cannot be scrolled or
+   * selected sensibly on most platforms, and is a no-op during SSR. A signal
+   * bound to a template panel is readable, copyable, and safe to set from
+   * anywhere `isBrowser` used to guard.
+   */
+  readonly promptPreview = signal<{ templateName: string; system: string; user: string } | null>(null);
 
   creature: CreatureArchetype = 'vampire';
   selectedThemeIds: string[] = ['forbidden_love', 'obsession'];
@@ -277,12 +290,17 @@ export class ProvingGroundsComponent implements OnInit {
   }
 
   viewPrompts(): void {
+    const template = this.selectedPromptTemplate();
     const prompts = this.getFilledPrompts();
-    if (!prompts || !this.isBrowser) {
+    if (!template || !prompts) {
       return;
     }
 
-    globalThis.alert(`SYSTEM PROMPT:\n\n${prompts.system}\n\n${'='.repeat(80)}\n\nUSER PROMPT:\n\n${prompts.user}`);
+    this.promptPreview.set({ templateName: template.name, system: prompts.system, user: prompts.user });
+  }
+
+  closePromptPreview(): void {
+    this.promptPreview.set(null);
   }
 
   sanitizeHtml(html: string): string {
@@ -316,17 +334,23 @@ export class ProvingGroundsComponent implements OnInit {
       return;
     }
 
-    const input = this.buildGenerationInput(prompts, themes);
-    // The prompts under test travel to the API inside `narrativeDirectives`,
-    // which the blueprint routes cap. Asking first is what keeps a test the
-    // route is certain to refuse from being reported as a generation failure —
-    // and names the two things the reader can actually change.
-    const overflow = describeNarrativeDirectivesOverflow(input.narrativeDirectives ?? '');
+    // Resolved from this call's own `prompts` rather than from
+    // `narrativeDirectivesOverflowMessage()` (the live template binding),
+    // which memoizes its answer against the *last rendered* configuration and
+    // can lag one Chekhov-ledger draw behind a request built right now — see
+    // that method's doc for why it can't just redraw on every call instead.
+    // Asking first is what keeps a test the route is certain to refuse from
+    // being reported as a generation failure — and names the thing the reader
+    // can change.
+    const directives = this.resolveNarrativeDirectives(prompts, template);
+    const overflow = directives ? describeNarrativeDirectivesOverflow(directives) : null;
     if (overflow) {
       this.statusMessage = `The "${template.name}" template does not fit: ${overflow} `
-        + 'Choose a shorter template, trim the custom prompt, or leave the generation logic out of this run.';
+        + 'Choose a shorter template or trim the custom prompt.';
       return;
     }
+
+    const input = this.buildGenerationInput(themes, directives);
 
     this.isGenerating.set(true);
     this.statusMessage = 'Generating Story Lab sample...';
@@ -347,7 +371,7 @@ export class ProvingGroundsComponent implements OnInit {
         this.isGenerating.set(false);
       },
       error: error => {
-        console.error('Error generating story:', error);
+        this.errorLogging.logError(error, 'ProvingGroundsComponent.generateStory');
         this.statusMessage = this.readApiErrorMessage(error)
           ?? 'Story generation failed. Check the debug panel or console for details.';
         this.isGenerating.set(false);
@@ -387,7 +411,7 @@ export class ProvingGroundsComponent implements OnInit {
       // API is unavailable" — described the fallback that had already happened
       // one line up, which is why nothing on this page ever said what went
       // wrong: the reason lives on the evaluation now, not here.
-      console.error('Error evaluating story:', error);
+      this.errorLogging.logError(error, 'ProvingGroundsComponent.evaluateStory');
       this.statusMessage = 'Evaluation could not be run.';
     } finally {
       this.isEvaluating.set(false);
@@ -461,12 +485,11 @@ export class ProvingGroundsComponent implements OnInit {
   }
 
   private buildGenerationInput(
-    prompts: { system: string; user: string },
-    themes: ThemeSeed[]
+    themes: ThemeSeed[],
+    narrativeDirectives: string | undefined
   ): StoryGenerationSeam['input'] {
     const logline = this.userInput.trim()
       || `${this.creature} romance exploring ${themes.map(theme => theme.label.toLowerCase()).join(', ')}`;
-    const logic = this.currentGenerationLogic();
 
     return {
       creature: this.creature,
@@ -482,13 +505,102 @@ export class ProvingGroundsComponent implements OnInit {
         intimacyBoundary: 'fade_to_black',
         noGoContent: ''
       },
-      narrativeDirectives: [
-        'PROVING GROUNDS TEST',
-        prompts.system,
-        prompts.user,
-        logic ? this.generationLogicService.summarizeLogic(logic) : ''
-      ].filter(Boolean).join('\n\n')
+      narrativeDirectives
     };
+  }
+
+  /**
+   * What this run should send as `narrativeDirectives`, or `undefined` to send
+   * none at all.
+   *
+   * The unmodified "Current Production" template is the one case that sends
+   * nothing: its whole claim is that it's the prompt every other story on this
+   * app is generated from, and that prompt already runs unconditionally on the
+   * server (`StoryService.buildProductionSystemPrompt`). Packing it into
+   * `narrativeDirectives` restated a prompt the request was already going to
+   * get, at nine times this field's 1,200-character cap — which is why the
+   * page's own default configuration could never generate a single story. A
+   * request with no override *is* what "current production" means, and it can
+   * now actually run.
+   *
+   * Every other case — an experimental template, or "Current Production" with
+   * `useCustomPrompts` on, since editing its text is what turns a baseline into
+   * a variant — sends the system and user prompt under test. The literal
+   * `'PROVING GROUNDS TEST'` label and the generation-logic summary this used
+   * to also carry are gone: the label was three words of the 1,200-character
+   * budget spent on identifying the request rather than testing a prompt, and
+   * the logic summary described a beat structure and author styles the server
+   * draws independently and was never going to honor (see
+   * `currentGenerationLogic`'s panel below) — sending it did not make the
+   * summarized run any more likely to happen, it only made every experimental
+   * template that much closer to this same cap.
+   */
+  private resolveNarrativeDirectives(
+    prompts: { system: string; user: string },
+    template: PromptTemplate
+  ): string | undefined {
+    if (template.id === 'production' && !this.useCustomPrompts) {
+      return undefined;
+    }
+
+    return [prompts.system, prompts.user].filter(Boolean).join('\n\n') || undefined;
+  }
+
+  /**
+   * The configuration `narrativeDirectivesOverflowMessage` last answered for,
+   * and the answer — so a configuration that hasn't changed gets the same
+   * answer back instead of a fresh one.
+   *
+   * `getFilledPrompts()` draws a new Chekhov ledger on every call for the
+   * "Current Production" template, on purpose: `CHEKHOV_LEDGER_TOKEN`'s own
+   * doc explains why a real run should not plant the same two elements every
+   * time. That is correct for a discrete action — pressing Generate, or View
+   * Prompts — and wrong for a value two live template bindings both read every
+   * change-detection pass: the Generate button's `[disabled]` and the overflow
+   * banner's text called this method separately within one pass, each got its
+   * own draw, and Angular's dev-mode consistency check failed on the two
+   * different lengths (`NG0100`) — the reader would have seen the same thing,
+   * a warning that could read differently framed the same way it flagged.
+   */
+  private narrativeDirectivesOverflowCache: { signature: string; overflow: string | null } | null = null;
+
+  /**
+   * Whether the `narrativeDirectives` this configuration would send exceeds
+   * the blueprint route's cap, and by how much.
+   *
+   * This is the live UI's warning, not the request guard: `generateStory()`
+   * computes its own answer from the exact `prompts` it is about to send, so
+   * a stale cache entry here can make this page's button re-enable one render
+   * later than the reader's last edit, never send a request the guard would
+   * have refused.
+   */
+  narrativeDirectivesOverflowMessage(): string | null {
+    const template = this.selectedPromptTemplate();
+    if (!template) {
+      return null;
+    }
+
+    const signature = JSON.stringify([
+      template.id,
+      this.useCustomPrompts,
+      this.useCustomPrompts ? this.customSystemPrompt : null,
+      this.useCustomPrompts ? this.customUserPrompt : null,
+      this.creature,
+      this.selectedThemeIds,
+      this.spicyLevel,
+      this.wordCount,
+      this.userInput
+    ]);
+
+    if (this.narrativeDirectivesOverflowCache?.signature === signature) {
+      return this.narrativeDirectivesOverflowCache.overflow;
+    }
+
+    const prompts = this.getFilledPrompts();
+    const directives = prompts ? this.resolveNarrativeDirectives(prompts, template) : undefined;
+    const overflow = directives ? describeNarrativeDirectivesOverflow(directives) : null;
+    this.narrativeDirectivesOverflowCache = { signature, overflow };
+    return overflow;
   }
 
   private createTestResult(
@@ -608,7 +720,7 @@ export class ProvingGroundsComponent implements OnInit {
     try {
       localStorage.setItem('provingGrounds_testHistory', JSON.stringify(this.testHistory()));
     } catch (error) {
-      console.error('Failed to save test history:', error);
+      this.errorLogging.logError(error, 'ProvingGroundsComponent.saveTestHistory');
     }
   }
 
@@ -635,7 +747,7 @@ export class ProvingGroundsComponent implements OnInit {
           .slice(0, MAX_TEST_HISTORY_ENTRIES)
       );
     } catch (error) {
-      console.error('Failed to load test history:', error);
+      this.errorLogging.logError(error, 'ProvingGroundsComponent.loadTestHistory');
     }
   }
 }

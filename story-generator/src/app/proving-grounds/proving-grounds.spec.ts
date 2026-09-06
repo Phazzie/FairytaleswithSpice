@@ -1,17 +1,74 @@
 // Created: 2026-06-21 08:56
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { HttpClientTestingModule } from '@angular/common/http/testing';
+import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
 import {
   CHAPTER_BATCH_SIZES,
   CREATURE_ARCHETYPES,
   ProvingGroundsTestResult,
   SPICY_LEVELS,
+  StoryIterationPayload,
   WORD_BUDGETS
 } from '../contracts';
 import { ProvingGroundsComponent } from './proving-grounds';
 import { STORY_BLUEPRINT_LIMITS } from '../../../../shared/storyBlueprintLimits';
 import { STORY_LAB_THEME_SEEDS } from '../../../../shared/storyLabThemeSeeds';
+
+function createStoryIterationPayload(): StoryIterationPayload {
+  const now = new Date().toISOString();
+  return {
+    summary: {
+      storyId: 'story-123',
+      title: 'Crimson Covenant',
+      synopsis: 'A pact of blood entwines lovers and rivals.',
+      tone: 'dark_romance',
+      spicyLevel: 3,
+      createdAt: now,
+      updatedAt: now
+    },
+    batch: {
+      chapters: [
+        {
+          chapterId: 'chapter-1',
+          chapterNumber: 1,
+          title: 'Moonlit Ultimatum',
+          htmlContent: '<p>Content</p>',
+          rawContent: '<p>Content</p>',
+          summary: 'An impossible choice is presented.',
+          wordCount: 900,
+          hasCliffhanger: true,
+          delta: {
+            introducedCharacters: [],
+            resolvedThreads: [],
+            escalatedThreads: [],
+            foreshadowedArtifacts: [],
+            continuityFlags: []
+          }
+        }
+      ],
+      totalWordCount: 900,
+      suggestedNextPrompts: []
+    },
+    state: {
+      storyId: 'story-123',
+      revision: 1,
+      characters: [],
+      threads: [],
+      artifacts: [],
+      beats: [],
+      continuityWarnings: [],
+      narrativeVoice: 'Whispers in velvet',
+      lastUpdatedAt: now
+    },
+    telemetry: {
+      engine: 'gpt',
+      totalLatencyMs: 2000,
+      averageChapterLatencyMs: 2000,
+      tokensConsumed: 1200,
+      retryCount: 0
+    }
+  };
+}
 
 function createEvaluatedResult(): ProvingGroundsTestResult {
   return {
@@ -116,6 +173,7 @@ function getCurrentEvaluateButton(fixture: ComponentFixture<ProvingGroundsCompon
 describe('ProvingGroundsComponent', () => {
   let fixture: ComponentFixture<ProvingGroundsComponent>;
   let component: ProvingGroundsComponent;
+  let httpMock: HttpTestingController;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -125,11 +183,13 @@ describe('ProvingGroundsComponent', () => {
 
     fixture = TestBed.createComponent(ProvingGroundsComponent);
     component = fixture.componentInstance;
+    httpMock = TestBed.inject(HttpTestingController);
     fixture.detectChanges();
   });
 
   afterEach(() => {
     localStorage.removeItem('provingGrounds_testHistory');
+    httpMock.verify();
   });
 
   it('renders deterministic heuristic report dimensions for evaluated stories', () => {
@@ -373,5 +433,91 @@ describe('ProvingGroundsComponent', () => {
     expect(component.currentTest()).toBeNull();
     expect(component.testHistory().length).toBe(1);
     expect(component.testHistory()[0].id).toBe('delete-survivor');
+  });
+
+  // The page opened on the "Current Production" template by default and packed
+  // its whole system+user prompt into `narrativeDirectives`, which the
+  // blueprint routes cap at 1,200 characters. The real prompt runs to about
+  // 10,500 — so the very first thing a reader could do on this page, pressing
+  // Generate with nothing changed, always hit that cap and never ran.
+  it('sends no narrativeDirectives override for the unmodified "Current Production" baseline, so it can actually generate', () => {
+    expect(component.selectedPromptTemplate()?.id).toBe('production');
+    expect(component.narrativeDirectivesOverflowMessage()).toBeNull();
+
+    const generateButton = getGenerateButton(fixture);
+    expect(generateButton.disabled).toBeFalse();
+
+    component.generateStory();
+
+    const req = httpMock.expectOne('/api/story-lab/stories');
+    expect(req.request.body.narrativeDirectives).toBeUndefined();
+    req.flush({ success: true, data: createStoryIterationPayload() });
+  });
+
+  // Experimental templates still travel inside `narrativeDirectives` — the
+  // route has no seam for a real system-prompt override — but the literal
+  // `'PROVING GROUNDS TEST'` label and the generation-logic summary used to
+  // ride along too, spending part of the same 1,200-character budget on text
+  // that was not the prompt under test.
+  it('sends only the system and user prompt as narrativeDirectives for an experimental template', () => {
+    const concise = component.promptTemplates.find(template => template.id === 'concise')!;
+    component.selectPromptTemplate(concise);
+    fixture.detectChanges();
+
+    const prompts = component.getFilledPrompts()!;
+    component.generateStory();
+
+    const req = httpMock.expectOne('/api/story-lab/stories');
+    expect(req.request.body.narrativeDirectives).toBe(`${prompts.system}\n\n${prompts.user}`);
+    expect(req.request.body.narrativeDirectives).not.toContain('PROVING GROUNDS TEST');
+    req.flush({ success: true, data: createStoryIterationPayload() });
+  });
+
+  // Editing the "Current Production" template's own text is what turns it from
+  // a baseline into a variant: the reader is no longer comparing against what
+  // the app actually sends, so it has to go through the same capped field
+  // every other template does.
+  it('treats "Current Production" as a variant once custom prompt editing is turned on, and reports the resulting overflow', () => {
+    component.useCustomPrompts = true;
+    fixture.detectChanges();
+
+    const overflow = component.narrativeDirectivesOverflowMessage();
+    expect(overflow).toContain(`this API accepts ${STORY_BLUEPRINT_LIMITS.maxNarrativeDirectivesLength}`);
+
+    const generateButton = getGenerateButton(fixture);
+    expect(generateButton.disabled).toBeTrue();
+
+    const warning = getByTestId(fixture, 'narrative-directives-overflow');
+    expect(warning.textContent).toContain(overflow);
+
+    component.generateStory();
+    httpMock.expectNone('/api/story-lab/stories');
+  });
+
+  // `viewPrompts()` used to hand a ~10,000-character prompt to
+  // `globalThis.alert()`, which truncates on most platforms, cannot be
+  // scrolled or selected, and is a no-op during SSR.
+  it('shows a closable prompt preview panel instead of alert() when View Prompts is clicked', () => {
+    spyOn(window, 'alert');
+
+    getByTestId(fixture, 'view-prompts').click();
+    fixture.detectChanges();
+
+    expect(window.alert).not.toHaveBeenCalled();
+    // Read back from the signal `viewPrompts()` set, not a second
+    // `getFilledPrompts()` call: the "Current Production" template draws a
+    // fresh random Chekhov ledger on every call, by design (see
+    // `resolveNarrativeDirectives`'s doc), so a second call here would assert
+    // the panel against a draw that never rendered.
+    const preview = component.promptPreview();
+    expect(preview).not.toBeNull();
+    expect(getByTestId(fixture, 'prompt-preview-system').textContent).toBe(preview!.system);
+    expect(getByTestId(fixture, 'prompt-preview-user').textContent).toBe(preview!.user);
+
+    getByTestId(fixture, 'close-prompt-preview').click();
+    fixture.detectChanges();
+
+    expect(component.promptPreview()).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-testid="prompt-preview-system"]')).toBeNull();
   });
 });

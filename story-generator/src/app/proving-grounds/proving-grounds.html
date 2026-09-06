@@ -141,13 +141,20 @@
             class="btn btn-primary btn-large"
             data-testid="generate-story"
             (click)="generateStory()"
-            [disabled]="isGenerating() || selectedThemes.length === 0">
+            [disabled]="isGenerating() || selectedThemes.length === 0 || !!narrativeDirectivesOverflowMessage()">
             @if (isGenerating()) {
               <span class="spinner">⏳</span> Generating...
             } @else {
               🚀 Generate Story
             }
           </button>
+
+          @if (narrativeDirectivesOverflowMessage(); as overflow) {
+            <p class="narrative-directives-warning" data-testid="narrative-directives-overflow">
+              ⚠️ {{ overflow }}
+              <span class="narrative-directives-warning-detail">Choose a shorter template or trim the custom prompt.</span>
+            </p>
+          }
         </div>
       </div>
 
@@ -218,7 +225,12 @@
               }
             </div>
 
-            <p class="hint">💡 These elements are randomly selected for each generation, mimicking the production story service</p>
+            <p class="hint">
+              💡 This is a preview of one possible random draw, using the same tables the server draws from — it does
+              not determine what the "Generate Story" button below actually sends. The server draws its own author
+              styles and beat structure independently for the run itself, so "Regenerate Random" changes what this
+              panel shows, not what gets generated.
+            </p>
           </div>
         }
       </div>
@@ -580,4 +592,38 @@
       }
     </main>
   </div>
+
+  <!--
+    Replaces the `globalThis.alert()` this page used to show a filled prompt
+    with. A system prompt this size (thousands of characters) truncates in a
+    browser `alert()`, can't be scrolled or selected on most platforms, and is
+    a no-op during SSR — a panel bound to a signal has none of those limits.
+  -->
+  @if (promptPreview(); as preview) {
+    <div class="prompt-preview-overlay" (click)="closePromptPreview()">
+      <div
+        class="prompt-preview-panel"
+        role="dialog"
+        aria-modal="true"
+        [attr.aria-label]="preview.templateName + ' filled prompts'"
+        (click)="$event.stopPropagation()">
+        <div class="prompt-preview-header">
+          <h2>{{ preview.templateName }} — Filled Prompts</h2>
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
+            data-testid="close-prompt-preview"
+            (click)="closePromptPreview()">
+            ✕ Close
+          </button>
+        </div>
+        <div class="prompt-preview-body">
+          <h3>System Prompt</h3>
+          <pre class="prompt-preview-text" data-testid="prompt-preview-system">{{ preview.system }}</pre>
+          <h3>User Prompt</h3>
+          <pre class="prompt-preview-text" data-testid="prompt-preview-user">{{ preview.user }}</pre>
+        </div>
+      </div>
+    </div>
+  }
 </div>
