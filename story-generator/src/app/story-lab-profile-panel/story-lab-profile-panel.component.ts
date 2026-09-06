@@ -75,9 +75,12 @@ function extractApiErrorMessage(error: { error?: { error?: { message?: string } 
  * Guards its requests against `AuthService.sessionEpoch()` the same way
  * `CloudLibraryService` guards its own — a response arriving after the
  * signed-in account changed (a sign-out, or a switch in another tab) is
- * discarded rather than applied, and the panel closes itself the moment the
- * epoch moves while it's open, so one account's profile — including its
- * private "no-go content" notes — can never render under another.
+ * discarded rather than applied. The panel additionally closes itself the
+ * moment `AuthService.accountId()` changes while it's open — a coarser
+ * `sessionEpoch` change alone (an ordinary same-account token refresh) does
+ * not close it, so a refresh mid-edit cannot discard a reader's unsaved
+ * changes — so one account's profile, including its private "no-go
+ * content" notes, can never render under another.
  */
 @Component({
   selector: 'app-story-lab-profile-panel',
@@ -107,20 +110,42 @@ export class StoryLabProfilePanelComponent implements OnInit, AfterViewInit {
   readonly saveError = signal<string | null>(null);
   readonly profile = signal<StoryLabUserProfile | null>(null);
 
-  // Captured once at construction — the epoch this panel was opened under.
-  // `AuthService.sessionEpoch()` advances on every sign-out and on every
-  // account switch (even one with no intermediate signed-out state), so
-  // comparing against it is what lets a response know whether the identity
-  // that requested it still holds.
+  // Captured once at construction. `AuthService.sessionEpoch()` advances on
+  // every sign-out, every account switch, *and* an ordinary same-account
+  // token refresh (deliberately coarser — see that signal's own comment) —
+  // right for discarding a response that might have raced any of those, but
+  // wrong for deciding whether to close the panel out from under an editing
+  // reader: a refresh alone must not discard their unsaved edits.
+  // `AuthService.accountId()` is what the panel is actually open *for* — it
+  // is `null` when signed out and otherwise stable across an ordinary
+  // refresh (same `sub`, changed only by an actual sign-in/out or switch) —
+  // so that is what the auto-close effect below compares instead.
   private readonly openedSessionEpoch = this.authService.sessionEpoch();
+  private readonly openedAccountId = this.authService.accountId();
   private lastFocusedElement: HTMLElement | null = null;
 
   constructor() {
+    // The reaction lives in `handleAccountIdChange` rather than inline here
+    // — see `App`'s own constructor-effect comment for why a plain,
+    // directly-callable method is what this codebase's tests drive, rather
+    // than relying on a constructor effect reliably rerunning under TestBed.
     effect(() => {
-      if (this.authService.sessionEpoch() !== this.openedSessionEpoch) {
-        this.close();
-      }
+      this.handleAccountIdChange(this.authService.accountId());
     });
+  }
+
+  /**
+   * Bypasses `close()`'s `isSaving()` guard deliberately: that guard exists
+   * to stop a reader's own Cancel/Escape/backdrop click from discarding an
+   * in-flight save by accident, not to keep the outgoing account's profile
+   * on screen — including its private "no-go content" notes — locked open
+   * under the incoming account for however long that save takes to fail or
+   * land.
+   */
+  handleAccountIdChange(currentAccountId: string | null): void {
+    if (currentAccountId !== this.openedAccountId) {
+      this.forceClose();
+    }
   }
 
   ngOnInit(): void {
@@ -256,12 +281,16 @@ export class StoryLabProfilePanelComponent implements OnInit, AfterViewInit {
       return;
     }
 
-    this.closed.emit();
-    this.lastFocusedElement?.focus();
+    this.forceClose();
   }
 
   dismissBackdrop(): void {
     this.close();
+  }
+
+  private forceClose(): void {
+    this.closed.emit();
+    this.lastFocusedElement?.focus();
   }
 
   /**
@@ -289,8 +318,15 @@ export class StoryLabProfilePanelComponent implements OnInit, AfterViewInit {
     const first = focusable[0];
     const last = focusable[focusable.length - 1];
     const active = document.activeElement;
+    // `ngAfterViewInit` focuses the panel container itself (`#panel`), not
+    // `first` — so the very first Shift+Tab, before the reader has tabbed
+    // anywhere, sees `active === panelRef.nativeElement` rather than `first`.
+    // Treating the container as an equivalent backward boundary is what
+    // makes that first keystroke wrap instead of escaping to the page
+    // behind the dialog.
+    const isAtBackwardBoundary = active === first || active === this.panelRef?.nativeElement;
 
-    if (event.shiftKey && active === first) {
+    if (event.shiftKey && isAtBackwardBoundary) {
       event.preventDefault();
       last.focus();
     } else if (!event.shiftKey && active === last) {

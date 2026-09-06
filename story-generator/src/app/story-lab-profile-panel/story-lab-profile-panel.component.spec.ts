@@ -5,6 +5,8 @@ import { StoryLabProfilePanelComponent } from './story-lab-profile-panel.compone
 import { StoryLabUserProfile } from '../contracts';
 import { AuthService } from '../auth.service';
 
+const OWNER_ACCOUNT_ID = 'user-owner-account';
+
 function createProfile(overrides: Partial<StoryLabUserProfile['preferences']> = {}): StoryLabUserProfile {
   const now = '2026-06-08T08:38:00.000Z';
   return {
@@ -31,13 +33,15 @@ describe('StoryLabProfilePanelComponent', () => {
   let fixture: ComponentFixture<StoryLabProfilePanelComponent>;
   let httpMock: HttpTestingController;
   let sessionEpoch: WritableSignal<number>;
+  let accountId: WritableSignal<string | null>;
 
   beforeEach(async () => {
     sessionEpoch = signal(0);
+    accountId = signal<string | null>(OWNER_ACCOUNT_ID);
 
     await TestBed.configureTestingModule({
       imports: [StoryLabProfilePanelComponent, HttpClientTestingModule],
-      providers: [{ provide: AuthService, useValue: { sessionEpoch } }]
+      providers: [{ provide: AuthService, useValue: { sessionEpoch, accountId } }]
     }).compileComponents();
 
     fixture = TestBed.createComponent(StoryLabProfilePanelComponent);
@@ -187,6 +191,52 @@ describe('StoryLabProfilePanelComponent', () => {
     });
   });
 
+  describe('account-identity close guard', () => {
+    it('closes when the signed-in account actually changes', () => {
+      fixture.detectChanges();
+      httpMock.expectOne('/api/story-lab/account/profile').flush({ success: true, data: createProfile() });
+
+      const closedSpy = jasmine.createSpy('closed');
+      component.closed.subscribe(closedSpy);
+
+      component.handleAccountIdChange('a-different-account');
+
+      expect(closedSpy).toHaveBeenCalled();
+    });
+
+    it('does not close for an ordinary same-account token refresh', () => {
+      fixture.detectChanges();
+      httpMock.expectOne('/api/story-lab/account/profile').flush({ success: true, data: createProfile() });
+
+      const closedSpy = jasmine.createSpy('closed');
+      component.closed.subscribe(closedSpy);
+
+      component.handleAccountIdChange(OWNER_ACCOUNT_ID);
+
+      expect(closedSpy).not.toHaveBeenCalled();
+    });
+
+    // Before this, an account change while a save was in flight hit
+    // `close()`'s `isSaving()` guard and silently did nothing — the exact
+    // moment the guard needs to be bypassed, not honored, since the
+    // alternative is the outgoing account's private profile staying
+    // rendered and locked open under the incoming account.
+    it('closes even while a save is in flight', () => {
+      fixture.detectChanges();
+      httpMock.expectOne('/api/story-lab/account/profile').flush({ success: true, data: createProfile() });
+      component.save();
+      httpMock.expectOne({ method: 'PUT' });
+      expect(component.isSaving()).toBeTrue();
+
+      const closedSpy = jasmine.createSpy('closed');
+      component.closed.subscribe(closedSpy);
+
+      component.handleAccountIdChange('a-different-account');
+
+      expect(closedSpy).toHaveBeenCalled();
+    });
+  });
+
   describe('keyboard interaction', () => {
     it('closes on Escape', () => {
       fixture.detectChanges();
@@ -198,6 +248,34 @@ describe('StoryLabProfilePanelComponent', () => {
       component.onDialogKeydown(new KeyboardEvent('keydown', { key: 'Escape' }));
 
       expect(closedSpy).toHaveBeenCalled();
+    });
+
+    // `ngAfterViewInit` focuses the dialog container itself, not its first
+    // control — before this fix, the very first Shift+Tab a reader pressed
+    // right after opening the panel missed the trap's `active === first`
+    // check entirely and escaped to the page behind the dialog.
+    it('wraps Shift+Tab back to the last control when focus is still on the dialog container', () => {
+      document.body.appendChild(fixture.nativeElement);
+      try {
+        fixture.detectChanges();
+        httpMock.expectOne('/api/story-lab/account/profile').flush({ success: true, data: createProfile() });
+        fixture.detectChanges();
+
+        const panel = fixture.nativeElement.querySelector('[data-testid="story-lab-profile-panel"]') as HTMLElement;
+        panel.focus();
+        expect(document.activeElement).toBe(panel);
+
+        const focusable = panel.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+        const last = focusable[focusable.length - 1];
+
+        component.onDialogKeydown(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, cancelable: true }));
+
+        expect(document.activeElement).toBe(last);
+      } finally {
+        document.body.removeChild(fixture.nativeElement);
+      }
     });
   });
 });

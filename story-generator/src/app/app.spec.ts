@@ -322,8 +322,19 @@ describe('App', () => {
       'deleteCloudStoryProject',
       'generateImage',
       'convertChapterToAudio',
-      'exportStory'
+      'exportStory',
+      'getStoryLabProfile',
+      'updateStoryLabProfile'
     ]);
+    // A quiet default for the constructor effect that forwards
+    // `isSignedIn()`/`accountId()` into `syncStoryLabProfileDefaultsWithAuthState`
+    // — most tests here never sign in, but the ones that do (or that call the
+    // method directly) should not silently seed the blueprint with a
+    // fabricated profile unless a test opts into that explicitly.
+    storyServiceSpy.getStoryLabProfile.and.returnValue(of({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'no profile in this test' }
+    }));
     // Every test here constructs `App`, and `App`'s constructor now calls
     // `AuthService.initialize()` unconditionally — this is what that resolves
     // to unless a test overrides it, matching every real deployment that has
@@ -1510,6 +1521,39 @@ describe('App', () => {
     component.onStoryLabProfileSaved(createStoryLabProfile());
 
     expect(component.blueprint()).toEqual(blueprintBeforeSave);
+  });
+
+  // Before this, a returning signed-in user's saved defaults were only ever
+  // applied at the moment of saving — a fresh sign-in on a later visit still
+  // used the hard-coded blueprint defaults until the reader opened the
+  // profile panel and saved again in the same session.
+  it('fetches and applies the profile once per signed-in account', () => {
+    storyService.getStoryLabProfile.and.returnValue(of({ success: true, data: createStoryLabProfile() }));
+
+    component.syncStoryLabProfileDefaultsWithAuthState(true, 'user-owner');
+
+    expect(component.blueprint().creature).toBe('witch');
+    expect(storyService.getStoryLabProfile).toHaveBeenCalledTimes(1);
+
+    // A second call for the same account (an ordinary token refresh) must
+    // not refetch.
+    component.syncStoryLabProfileDefaultsWithAuthState(true, 'user-owner');
+    expect(storyService.getStoryLabProfile).toHaveBeenCalledTimes(1);
+  });
+
+  it('refetches when the signed-in account actually changes', () => {
+    storyService.getStoryLabProfile.and.returnValue(of({ success: true, data: createStoryLabProfile() }));
+
+    component.syncStoryLabProfileDefaultsWithAuthState(true, 'user-owner');
+    component.syncStoryLabProfileDefaultsWithAuthState(true, 'a-different-user');
+
+    expect(storyService.getStoryLabProfile).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not fetch a profile while signed out', () => {
+    component.syncStoryLabProfileDefaultsWithAuthState(false, null);
+
+    expect(storyService.getStoryLabProfile).not.toHaveBeenCalled();
   });
 
   it('keeps non-durable loaded projects out of cloud-synced state', () => {
@@ -3430,9 +3474,19 @@ describe('App cloud account sign-in wiring', () => {
       'listCloudStoryProjects',
       'saveCloudStoryProject',
       'loadCloudStoryProject',
-      'deleteCloudStoryProject'
+      'deleteCloudStoryProject',
+      'getStoryLabProfile'
     ]);
     storyServiceSpy.getStoryLabAuthConfig.and.returnValue(of(config as any));
+    // A signed-in session here (the `provider: 'clerk'` case) makes `App`'s
+    // constructor effect call `syncStoryLabProfileDefaultsWithAuthState`,
+    // which calls this — stubbed to a quiet failure so it does not throw on
+    // a missing spy method or silently seed the blueprint for tests that
+    // don't expect it.
+    storyServiceSpy.getStoryLabProfile.and.returnValue(of({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'no profile in this test' }
+    }));
     // A signed-in session — the `provider: 'clerk'` case below reaches this —
     // makes `App`'s constructor effect call `refreshCloudLibrary()`, the same
     // way a manual "Check cloud" click would. Stubbed rather than left

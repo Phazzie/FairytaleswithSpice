@@ -1171,6 +1171,15 @@ export class App implements OnDestroy {
     effect(() => {
       this.cloudLibrary.syncWithAuthState(this.authService.isSignedIn(), this.authService.accountId());
     });
+
+    // Separate effect from the one above, tracking the same two signals —
+    // see this codebase's own note on why the reaction lives in a plain,
+    // directly-callable method rather than inline here (a constructor
+    // effect's rerun is not reliably exercised through this app's TestBed
+    // setup, so the method itself is what tests drive).
+    effect(() => {
+      this.syncStoryLabProfileDefaultsWithAuthState(this.authService.isSignedIn(), this.authService.accountId());
+    });
   }
 
   ngOnDestroy() {
@@ -1949,6 +1958,39 @@ export class App implements OnDestroy {
       tone: favoriteTones[0] ?? current.tone,
       heatContract: this.normalizeHeatContract(defaultHeatContract)
     }));
+  }
+
+  // A plain field, not a signal — tracking it in the constructor effect
+  // above would make it a dependency of that same effect, so this method's
+  // own write to it (on every fetch it starts) would immediately retrigger
+  // the effect. Records which account's profile defaults have already been
+  // fetched this session, so an ordinary token refresh under the same
+  // account does not refetch on every rerun, while an account switch (a
+  // different id) does.
+  private storyLabProfileDefaultsFetchedForAccountId: string | null = null;
+
+  /**
+   * The other half of the fix `onStoryLabProfileSaved` makes for the moment
+   * of saving: without this, a returning signed-in user's saved
+   * `favoriteCreatures`/`favoriteTones`/`defaultHeatContract` were only ever
+   * applied if they opened the profile panel and saved again in the same
+   * session — a fresh sign-in on a later visit still used the hard-coded
+   * defaults until then. Fetches at most once per signed-in account; a
+   * failed fetch is left silent (the same hard-coded defaults it would have
+   * replaced), since this is a background convenience, not a load-bearing
+   * request the reader is waiting on.
+   */
+  syncStoryLabProfileDefaultsWithAuthState(signedIn: boolean, accountId: string | null): void {
+    if (!signedIn || accountId === null || accountId === this.storyLabProfileDefaultsFetchedForAccountId) {
+      return;
+    }
+
+    this.storyLabProfileDefaultsFetchedForAccountId = accountId;
+    this.storyService.getStoryLabProfile().subscribe(response => {
+      if (response.success && response.data) {
+        this.applyStoryLabProfileDefaults(response.data);
+      }
+    });
   }
 
   saveActiveProjectToCloud() {
