@@ -101,7 +101,20 @@ export function createStoryLabAccountRouteHandler(
   dependencies: StoryLabAccountRouteDependencies = {}
 ): (req: RequestLike, res: ResponseLike) => Promise<void> {
   const now = dependencies.now ?? (() => new Date().toISOString());
-  const cloudStorage = createStoryLabCloudStorage({ now });
+  // Pass the caller's `now` through as given — possibly `undefined` — rather
+  // than the always-defaulted closure above. `createStoryLabCloudStorage`'s
+  // `non_durable_memory` branch uses the presence of an explicit `now` to
+  // decide whether to reuse its shared singleton or build an isolated store;
+  // handing it an always-present closure here would make every account-route
+  // call look like an explicit override and defeat that sharing (see that
+  // file's own comment on this exact point). Also forward `dependencies.env`
+  // (possibly undefined, same as `now`) rather than the `?? process.env`
+  // fallback used for `context.env` below — `createStoryLabCloudStorage`
+  // already falls through to `process.env` on its own when `env` is
+  // undefined, so this only matters for a caller (a test) that supplies an
+  // explicit `env` and expects it to govern cloud storage's own mode
+  // resolution too, not just this route's other env reads.
+  const cloudStorage = createStoryLabCloudStorage({ now: dependencies.now, env: dependencies.env });
   const context: StoryLabAccountRouteContext = {
     authPort: dependencies.authPort ?? configuredAuthPort,
     profileStore: dependencies.profileStore ?? cloudStorage.profileStore,

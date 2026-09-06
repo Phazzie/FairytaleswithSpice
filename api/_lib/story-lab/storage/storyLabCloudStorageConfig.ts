@@ -85,20 +85,23 @@ export function createStoryLabCloudStorage(
   const normalizedMode = normalizeDurableStoreMode(requestedMode);
 
   if (normalizedMode === 'non_durable_memory' || normalizedMode === 'memory') {
-    // The shared singletons always use the real clock, deliberately ignoring
-    // `options.now` here — matching `storyLabJobStoreConfig.ts`'s own
-    // `nonDurableStoryLabJobStore` singleton, which does the same. This
-    // matters because `createStoryLabAccountRouteHandler()` *always*
-    // constructs and passes a `now` closure (even when its caller supplied
-    // none), not only in tests — so branching on "is `now` present" would
-    // give the account route (the one route that actually saves profiles) a
-    // private store while every other route kept sharing the singleton,
-    // silently reintroducing the exact cross-route isolation bug this
-    // singleton exists to fix. A test that wants a controlled clock for this
-    // mode should pass `nonDurableProfileStore`/`nonDurableProjectStore`
-    // explicitly instead — that path is unaffected by this branch.
-    const profileStore = options.nonDurableProfileStore ?? sharedNonDurableStoryLabProfileStore;
-    const projectStore = options.nonDurableProjectStore ?? sharedNonDurableStoryProjectStore;
+    // The shared singleton is what every caller gets by default — including
+    // `createStoryLabAccountRouteHandler()`'s own default path, which passes
+    // `options.now` straight through as `undefined` rather than defaulting it
+    // to a closure first (see that file's own comment on this exact point;
+    // getting this wrong there once already broke this sharing). An explicit
+    // `now` override — genuinely supplied by a caller, not manufactured by
+    // this config or its callers — builds its own isolated, deterministically
+    // clocked store instead, matching the Postgres branch below's per-call
+    // clock behavior; that caller is asking for isolation along with the
+    // clock, which is the same tradeoff as passing `nonDurableProfileStore`/
+    // `nonDurableProjectStore` directly.
+    const profileStore =
+      options.nonDurableProfileStore
+      ?? (options.now ? createNonDurableInMemoryStoryLabProfileStore({ now: options.now }) : sharedNonDurableStoryLabProfileStore);
+    const projectStore =
+      options.nonDurableProjectStore
+      ?? (options.now ? createNonDurableInMemoryStoryProjectStore({ now: options.now }) : sharedNonDurableStoryProjectStore);
     return {
       requestedMode,
       mode: 'non_durable_memory',
