@@ -1,5 +1,5 @@
 // Created: 2026-06-21 08:56
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
 import {
@@ -519,5 +519,62 @@ describe('ProvingGroundsComponent', () => {
 
     expect(component.promptPreview()).toBeNull();
     expect(fixture.nativeElement.querySelector('[data-testid="prompt-preview-system"]')).toBeNull();
+  });
+
+  // `aria-modal="true"` alone doesn't move focus, trap it, or support Escape.
+  // Codex's review of the initial push flagged exactly this: opening the
+  // panel left focus on the trigger button, so Tab kept walking through the
+  // configuration controls behind the overlay before ever reaching Close.
+  it('moves keyboard focus into the prompt preview panel on open, and restores it to the trigger on close', fakeAsync(() => {
+    const viewPromptsButton = getByTestId(fixture, 'view-prompts');
+    viewPromptsButton.focus();
+    expect(document.activeElement).toBe(viewPromptsButton);
+
+    viewPromptsButton.click();
+    fixture.detectChanges();
+    tick();
+
+    const panel: HTMLElement | null = fixture.nativeElement.querySelector('[role="dialog"]');
+    expect(panel).withContext('the prompt preview panel should render').toBeTruthy();
+    expect(document.activeElement).toBe(panel);
+
+    getByTestId(fixture, 'close-prompt-preview').click();
+    fixture.detectChanges();
+
+    expect(document.activeElement).toBe(viewPromptsButton);
+  }));
+
+  it('closes the prompt preview panel on Escape', fakeAsync(() => {
+    getByTestId(fixture, 'view-prompts').click();
+    fixture.detectChanges();
+    tick();
+
+    const panel: HTMLElement = fixture.nativeElement.querySelector('[role="dialog"]');
+    panel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    fixture.detectChanges();
+
+    expect(component.promptPreview()).toBeNull();
+  }));
+
+  // Codex's review also caught that a stored result's `promptPreview` still
+  // held the client's independently-filled prompt even for the unmodified
+  // "Current Production" baseline, which — since this PR — sends no
+  // `narrativeDirectives` override at all. That text was never sent to the
+  // model, so attributing the generated story to it would be exactly the
+  // "documented capability, no matching implementation" defect this whole
+  // page exists to catch, one field deeper.
+  it('records an honest baseline notice instead of the discarded client-drawn prompt for an unmodified production result', () => {
+    expect(component.selectedPromptTemplate()?.id).toBe('production');
+
+    component.generateStory();
+
+    const req = httpMock.expectOne('/api/story-lab/stories');
+    req.flush({ success: true, data: createStoryIterationPayload() });
+
+    const stored = component.currentTest();
+    expect(stored).not.toBeNull();
+    expect(stored!.configuration.promptPreview.system).not.toContain('PROTAGONIST:');
+    expect(stored!.configuration.promptPreview.system).toBe(stored!.configuration.promptPreview.user);
+    expect(stored!.configuration.promptPreview.system.toLowerCase()).toContain('no narrativedirectives override');
   });
 });

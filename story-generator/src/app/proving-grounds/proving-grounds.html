@@ -598,18 +598,23 @@
     with. A system prompt this size (thousands of characters) truncates in a
     browser `alert()`, can't be scrolled or selected on most platforms, and is
     a no-op during SSR — a panel bound to a signal has none of those limits.
+
+    Structure and focus handling (role="presentation" backdrop, tabindex="-1"
+    panel focused on open, onPromptPreviewKeydown's Escape/Tab trap, restoring
+    focus to whatever opened it) match `StoryLabProfilePanelComponent`'s
+    dialog exactly, rather than inventing a second pattern for the same job.
   -->
   @if (promptPreview(); as preview) {
-    <div
-      class="prompt-preview-overlay"
-      (click)="closePromptPreview()"
-      (keydown.escape)="closePromptPreview()">
-      <dialog
-        open
+    <div class="prompt-preview-overlay" role="presentation" (click)="closePromptPreview()">
+      <section
+        #promptPreviewPanel
         class="prompt-preview-panel"
+        role="dialog"
+        aria-modal="true"
         [attr.aria-label]="preview.templateName + ' filled prompts'"
+        tabindex="-1"
         (click)="$event.stopPropagation()"
-        (keydown.escape)="closePromptPreview()">
+        (keydown)="onPromptPreviewKeydown($event)">
         <div class="prompt-preview-header">
           <h2>{{ preview.templateName }} — Filled Prompts</h2>
           <button
@@ -626,7 +631,7 @@
           <h3>User Prompt</h3>
           <pre class="prompt-preview-text" data-testid="prompt-preview-user">{{ preview.user }}</pre>
         </div>
-      </dialog>
+      </section>
     </div>
   }
 </div>

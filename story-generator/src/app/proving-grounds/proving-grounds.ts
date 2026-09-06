@@ -1,6 +1,15 @@
 // Created: 2025-10-31 06:28
 import { CommonModule, isPlatformBrowser } from '@angular/common';
-import { Component, HostListener, OnInit, PLATFORM_ID, SecurityContext, inject, signal } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  OnInit,
+  PLATFORM_ID,
+  SecurityContext,
+  ViewChild,
+  inject,
+  signal
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer } from '@angular/platform-browser';
 import { RouterLink } from '@angular/router';
@@ -40,6 +49,34 @@ import { STORY_LAB_THEME_SEEDS } from '../../../../shared/storyLabThemeSeeds';
 
 type TestResult = ProvingGroundsTestResult;
 type StoredTestResult = StoredProvingGroundsTestResult;
+
+/**
+ * What a stored test result's `promptPreview` says for a run that sent no
+ * `narrativeDirectives` override — the unmodified "Current Production"
+ * baseline (see `resolveNarrativeDirectives`).
+ *
+ * `getFilledPrompts()` still computes a system/user prompt for that run (the
+ * page needs one for the request's `logline`/`themes`, and `viewPrompts()`
+ * shows it on request), but the server never receives it: the real production
+ * system prompt runs instead, with its own independently-drawn author styles,
+ * beat structure, and Chekhov ledger. Storing the client's unsent draw as
+ * `promptPreview` would attribute the generated prose to a prompt the model
+ * never saw — the same "documented capability, no matching implementation"
+ * shape this whole page exists to catch, one field deeper. This says so
+ * instead of guessing at text nobody can reconstruct after the fact.
+ */
+const BASELINE_PROMPT_PREVIEW_NOTICE = 'This run sent no narrativeDirectives override, so the live production '
+  + 'prompt ran as-is — including its own independently-drawn author styles, beat structure, and Chekhov ledger. '
+  + 'The prompt this page would otherwise show here was never sent to the model, so it is not shown as if it were.';
+
+/**
+ * Elements a reader can move keyboard focus to, for the prompt preview
+ * panel's focus trap below — the same selector and trap
+ * `StoryLabProfilePanelComponent.onDialogKeydown` uses, so this page's one
+ * other modal doesn't invent a second way to do the same job.
+ */
+const FOCUSABLE_SELECTOR = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), '
+  + 'textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
  * How many past runs the history keeps. Read by the restore as well as by the
@@ -107,7 +144,9 @@ export class ProvingGroundsComponent implements OnInit {
   private readonly generationLogicService = inject(GenerationLogicService);
   private readonly errorLogging = inject(ErrorLoggingService);
   private readonly isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
+  @ViewChild('promptPreviewPanel') private readonly promptPreviewPanelRef?: ElementRef<HTMLElement>;
   private idSequence = 0;
+  private lastFocusedElementBeforePreview: HTMLElement | null = null;
 
   readonly isGenerating = signal(false);
   readonly isEvaluating = signal(false);
@@ -290,30 +329,71 @@ export class ProvingGroundsComponent implements OnInit {
   }
 
   viewPrompts(): void {
-    const template = this.selectedPromptTemplate();
-    const prompts = this.getFilledPrompts();
+    const { template, prompts } = this.resolveCurrentRequest();
     if (!template || !prompts) {
       return;
     }
 
+    this.lastFocusedElementBeforePreview = this.isBrowser ? (document.activeElement as HTMLElement | null) : null;
     this.promptPreview.set({ templateName: template.name, system: prompts.system, user: prompts.user });
-  }
 
-  /**
-   * Escape closes the preview from anywhere on the page, not only when the
-   * overlay itself happens to have focus — opening the panel doesn't move
-   * focus into it, so a listener scoped to one of its own elements would miss
-   * the common case of pressing Escape right after the click that opened it.
-   */
-  @HostListener('document:keydown.escape')
-  onEscapeKey(): void {
-    if (this.promptPreview()) {
-      this.closePromptPreview();
+    if (this.isBrowser) {
+      // `setTimeout` rather than an `effect` watching `promptPreview()`: this
+      // component's own signal-change effects run before Angular refreshes
+      // `@if`-conditional `ViewChild` queries against the newly-created DOM,
+      // so `promptPreviewPanelRef` was still `undefined` the instant an
+      // effect saw the signal turn non-null. Queuing this after the current
+      // task — which includes this synchronous call and the change-detection
+      // pass a template event binding triggers right after it returns — is
+      // what guarantees the panel exists by the time this runs.
+      setTimeout(() => this.promptPreviewPanelRef?.nativeElement.focus());
     }
   }
 
   closePromptPreview(): void {
     this.promptPreview.set(null);
+    this.lastFocusedElementBeforePreview?.focus();
+    this.lastFocusedElementBeforePreview = null;
+  }
+
+  /**
+   * A minimal focus trap, identical to
+   * `StoryLabProfilePanelComponent.onDialogKeydown`: Tab from the last
+   * focusable control wraps to the first, and Shift+Tab from the first wraps
+   * to the last, so keyboard focus cannot leave the panel into the
+   * configuration controls behind it while it's open.
+   */
+  onPromptPreviewKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      this.closePromptPreview();
+      return;
+    }
+
+    if (event.key !== 'Tab') {
+      return;
+    }
+
+    const focusable = this.promptPreviewPanelRef?.nativeElement.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
+    if (!focusable || focusable.length === 0) {
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement;
+    // The panel itself is what `viewPrompts()` focuses on open, not `first`
+    // — so the very first Shift+Tab, before the reader has tabbed anywhere,
+    // sees `active === promptPreviewPanelRef.nativeElement` rather than `first`.
+    const isAtBackwardBoundary = active === first || active === this.promptPreviewPanelRef?.nativeElement;
+
+    if (event.shiftKey && isAtBackwardBoundary) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
   }
 
   sanitizeHtml(html: string): string {
@@ -339,24 +419,16 @@ export class ProvingGroundsComponent implements OnInit {
       return;
     }
 
-    const template = this.selectedPromptTemplate();
-    const prompts = this.getFilledPrompts();
+    const { template, prompts, directives, overflow } = this.resolveCurrentRequest();
     const themes = this.selectedThemes;
     if (!template || !prompts || !themes.length) {
       this.statusMessage = 'Choose a prompt template and at least one theme.';
       return;
     }
 
-    // Resolved from this call's own `prompts` rather than from
-    // `narrativeDirectivesOverflowMessage()` (the live template binding),
-    // which memoizes its answer against the *last rendered* configuration and
-    // can lag one Chekhov-ledger draw behind a request built right now — see
-    // that method's doc for why it can't just redraw on every call instead.
     // Asking first is what keeps a test the route is certain to refuse from
     // being reported as a generation failure — and names the thing the reader
     // can change.
-    const directives = this.resolveNarrativeDirectives(prompts, template);
-    const overflow = directives ? describeNarrativeDirectivesOverflow(directives) : null;
     if (overflow) {
       this.statusMessage = `The "${template.name}" template does not fit: ${overflow} `
         + 'Choose a shorter template or trim the custom prompt.';
@@ -364,6 +436,12 @@ export class ProvingGroundsComponent implements OnInit {
     }
 
     const input = this.buildGenerationInput(themes, directives);
+    // A real generation gets the request it was just shown and warned about —
+    // `resolveCurrentRequest()`'s cache is exactly that request — and then the
+    // cache is cleared, so the *next* click (even against this same
+    // configuration) draws its own fresh Chekhov ledger rather than repeating
+    // this one, matching how production draws fresh per generation.
+    this.currentRequestCache = null;
 
     this.isGenerating.set(true);
     this.statusMessage = 'Generating Story Lab sample...';
@@ -377,7 +455,7 @@ export class ProvingGroundsComponent implements OnInit {
           return;
         }
 
-        const testResult = this.createTestResult(result.data, template, prompts, Date.now() - startTime);
+        const testResult = this.createTestResult(result.data, template, prompts, directives, Date.now() - startTime);
         this.currentTest.set(testResult);
         this.addToHistory(testResult);
         this.statusMessage = `Generated ${testResult.chapterCount} chapter${testResult.chapterCount === 1 ? '' : 's'} for comparison.`;
@@ -523,6 +601,76 @@ export class ProvingGroundsComponent implements OnInit {
   }
 
   /**
+   * What `resolveCurrentRequest` last answered for, and the answer — so
+   * everything that needs "the request this configuration would currently
+   * send" (the live overflow warning, the Generate button's `[disabled]`,
+   * View Prompts, and Generate itself) reads the *same* draw instead of each
+   * calling `getFilledPrompts()` on their own.
+   *
+   * That used to be three separate calls. `getFilledPrompts()` draws a new
+   * Chekhov ledger every time for the "Current Production" template, on
+   * purpose — `CHEKHOV_LEDGER_TOKEN`'s own doc explains why a real run
+   * shouldn't plant the same two elements every time — so three independent
+   * calls in close succession could each disagree: the overflow banner could
+   * warn about a length the button's `[disabled]` never saw (Angular's
+   * `NG0100` dev-mode check caught exactly this the first time), and worse,
+   * `generateStory()` could validate one draw and then send a request built
+   * from a second, longer one — passing a guard the actual request would have
+   * failed, or refusing one that would have fit.
+   *
+   * Cleared once a real generation is sent (see `generateStory()`), so the
+   * *next* click still draws its own fresh ledger — this cache is "the
+   * request for the configuration on screen right now", not a standing
+   * substitute for drawing at all.
+   */
+  private currentRequestCache: {
+    signature: string;
+    prompts: { system: string; user: string } | null;
+    directives: string | undefined;
+    overflow: string | null;
+  } | null = null;
+
+  /**
+   * The request the reader's current configuration would send, computed once
+   * per distinct configuration and reused until something in the signature
+   * below changes.
+   */
+  private resolveCurrentRequest(): {
+    template: PromptTemplate | null;
+    prompts: { system: string; user: string } | null;
+    directives: string | undefined;
+    overflow: string | null;
+  } {
+    const template = this.selectedPromptTemplate();
+    if (!template) {
+      return { template: null, prompts: null, directives: undefined, overflow: null };
+    }
+
+    const signature = JSON.stringify([
+      template.id,
+      this.useCustomPrompts,
+      this.useCustomPrompts ? this.customSystemPrompt : null,
+      this.useCustomPrompts ? this.customUserPrompt : null,
+      this.creature,
+      this.selectedThemeIds,
+      this.spicyLevel,
+      this.wordCount,
+      this.userInput
+    ]);
+
+    if (this.currentRequestCache?.signature === signature) {
+      const { prompts, directives, overflow } = this.currentRequestCache;
+      return { template, prompts, directives, overflow };
+    }
+
+    const prompts = this.getFilledPrompts();
+    const directives = prompts ? this.resolveNarrativeDirectives(prompts, template) : undefined;
+    const overflow = directives ? describeNarrativeDirectivesOverflow(directives) : null;
+    this.currentRequestCache = { signature, prompts, directives, overflow };
+    return { template, prompts, directives, overflow };
+  }
+
+  /**
    * What this run should send as `narrativeDirectives`, or `undefined` to send
    * none at all.
    *
@@ -560,69 +708,30 @@ export class ProvingGroundsComponent implements OnInit {
   }
 
   /**
-   * The configuration `narrativeDirectivesOverflowMessage` last answered for,
-   * and the answer — so a configuration that hasn't changed gets the same
-   * answer back instead of a fresh one.
-   *
-   * `getFilledPrompts()` draws a new Chekhov ledger on every call for the
-   * "Current Production" template, on purpose: `CHEKHOV_LEDGER_TOKEN`'s own
-   * doc explains why a real run should not plant the same two elements every
-   * time. That is correct for a discrete action — pressing Generate, or View
-   * Prompts — and wrong for a value two live template bindings both read every
-   * change-detection pass: the Generate button's `[disabled]` and the overflow
-   * banner's text called this method separately within one pass, each got its
-   * own draw, and Angular's dev-mode consistency check failed on the two
-   * different lengths (`NG0100`) — the reader would have seen the same thing,
-   * a warning that could read differently framed the same way it flagged.
-   */
-  private narrativeDirectivesOverflowCache: { signature: string; overflow: string | null } | null = null;
-
-  /**
    * Whether the `narrativeDirectives` this configuration would send exceeds
-   * the blueprint route's cap, and by how much.
-   *
-   * This is the live UI's warning, not the request guard: `generateStory()`
-   * computes its own answer from the exact `prompts` it is about to send, so
-   * a stale cache entry here can make this page's button re-enable one render
-   * later than the reader's last edit, never send a request the guard would
-   * have refused.
+   * the blueprint route's cap, and by how much — the live UI's warning,
+   * reading the same cached request `generateStory()` sends.
    */
   narrativeDirectivesOverflowMessage(): string | null {
-    const template = this.selectedPromptTemplate();
-    if (!template) {
-      return null;
-    }
-
-    const signature = JSON.stringify([
-      template.id,
-      this.useCustomPrompts,
-      this.useCustomPrompts ? this.customSystemPrompt : null,
-      this.useCustomPrompts ? this.customUserPrompt : null,
-      this.creature,
-      this.selectedThemeIds,
-      this.spicyLevel,
-      this.wordCount,
-      this.userInput
-    ]);
-
-    if (this.narrativeDirectivesOverflowCache?.signature === signature) {
-      return this.narrativeDirectivesOverflowCache.overflow;
-    }
-
-    const prompts = this.getFilledPrompts();
-    const directives = prompts ? this.resolveNarrativeDirectives(prompts, template) : undefined;
-    const overflow = directives ? describeNarrativeDirectivesOverflow(directives) : null;
-    this.narrativeDirectivesOverflowCache = { signature, overflow };
-    return overflow;
+    return this.resolveCurrentRequest().overflow;
   }
 
   private createTestResult(
     payload: StoryIterationPayload,
     template: PromptTemplate,
     prompts: { system: string; user: string },
+    narrativeDirectives: string | undefined,
     generationTime: number
   ): TestResult {
     const chapters = payload.batch.chapters;
+    // `prompts` is what this page filled in and never sent when
+    // `narrativeDirectives` is `undefined` (the unmodified production
+    // baseline) — see `resolveNarrativeDirectives`. Storing it here anyway
+    // would report the generated prose as having come from a specific prompt
+    // the model was never given.
+    const promptPreview = narrativeDirectives === undefined
+      ? { system: BASELINE_PROMPT_PREVIEW_NOTICE, user: BASELINE_PROMPT_PREVIEW_NOTICE }
+      : prompts;
     return {
       id: this.generateId(),
       timestamp: new Date(),
@@ -633,7 +742,7 @@ export class ProvingGroundsComponent implements OnInit {
         wordCount: this.wordCount,
         userInput: this.userInput,
         promptTemplate: template,
-        promptPreview: prompts
+        promptPreview
       },
       generatedStory: this.renderChapters(chapters),
       generationTime,
