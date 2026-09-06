@@ -48,6 +48,12 @@ async function main() {
   await testConfiguredExecutorFactoryBuildsProfileAndProjectStores();
   await testValidDatabaseUrlCreatesBundledNeonExecutor();
   await testInvalidDatabaseUrlFailsClosed();
+  await testDefaultModeIsPostgres();
+  await testNonDurableMemoryModeUsesInMemoryStores();
+  await testExplicitNowIsolatesFromTheSharedSingleton();
+  await testNonDurableMemorySharesStoreAcrossSeparateCalls();
+  await testUnsupportedModeFailsClosed();
+  await testCloudStorageModeEnvDoesNotFallThroughToProcessEnv();
 
   console.log('Story Lab cloud storage config tests passed');
 }
@@ -172,6 +178,135 @@ async function testInvalidDatabaseUrlFailsClosed() {
   const projectResult = await storage.projectStore.listProjects(owner, wholeLibraryQuery);
   assert(!projectResult.success, 'project store without executor should fail closed');
   assert(projectResult.error.code === 'STORY_LAB_STORAGE_DRIVER_MISSING', 'project store should expose driver-missing error');
+}
+
+// Unlike `storyLabJobStoreConfig.ts`/`rateLimitStoreConfig.ts`, whose only
+// prior implementation was in-memory, this store's only prior implementation
+// was Postgres — so the default here stays `postgres`, preserving every test
+// above byte-for-byte, rather than matching the siblings' `non_durable_memory`
+// default and silently downgrading an existing `DATABASE_URL`-backed deployment.
+async function testDefaultModeIsPostgres() {
+  const storage = createStoryLabCloudStorage({ env: {}, now: () => now });
+
+  assert(storage.mode === 'postgres', 'default cloud storage mode should stay postgres');
+  assert(storage.requestedMode === 'postgres', 'default requested mode should be reported as postgres');
+}
+
+// An explicit `now` builds its own isolated, deterministically clocked store
+// rather than reusing the shared singleton — the same tradeoff as passing
+// `nonDurableProfileStore`/`nonDurableProjectStore` directly. Every real route
+// (including `createStoryLabAccountRouteHandler()`'s own default path, which
+// passes `options.now` through as `undefined` rather than defaulting it to a
+// closure first) omits `now` entirely and gets the shared singleton instead —
+// see `testNonDurableMemorySharesStoreAcrossSeparateCalls` below for that path.
+async function testNonDurableMemoryModeUsesInMemoryStores() {
+  let factoryCalls = 0;
+  const storage = createStoryLabCloudStorage({
+    env: { STORY_LAB_CLOUD_STORAGE: 'non_durable_memory' },
+    now: () => now,
+    createExecutor() {
+      factoryCalls += 1;
+      throw new Error('executor should not initialize in non_durable_memory mode');
+    }
+  });
+
+  assert(storage.mode === 'non_durable_memory', 'explicit opt-in should report non_durable_memory mode');
+  assert(!storage.databaseUrlConfigured, 'non_durable_memory mode should not require DATABASE_URL');
+  assert(!storage.executorConfigured, 'non_durable_memory mode should not create an executor');
+  assert(storage.isConfigured(), 'non_durable_memory mode should be immediately configured');
+  assert(factoryCalls === 0, 'executor factory should not run in non_durable_memory mode');
+
+  const profile = createDefaultStoryLabUserProfile(owner, { displayName: 'Riven', now });
+  const saveResult = await storage.profileStore.saveProfile(owner, profile);
+  assert(saveResult.success, 'non-durable profile store should accept saves');
+  const loadResult = await storage.profileStore.loadProfile(owner);
+  assert(loadResult.success && loadResult.data?.profile.displayName === 'Riven', 'non-durable profile store should round-trip in-process');
+  assert(loadResult.data?.createdAt === now, 'an explicit now should build a store that honors its own injected clock');
+
+  const project = createProject();
+  const projectSaveResult = await storage.projectStore.saveProject(owner, project);
+  assert(projectSaveResult.success, 'non-durable project store should accept saves');
+  const listResult = await storage.projectStore.listProjects(owner, wholeLibraryQuery);
+  assert(listResult.success && listResult.data.items[0]?.projectId === project.id, 'non-durable project store should round-trip in-process');
+}
+
+// An explicit `now` is isolation, not just a clock override: a call that
+// supplies one must not see records saved by a bare call sharing the
+// singleton, or vice versa — otherwise "isolated" would be a lie.
+async function testExplicitNowIsolatesFromTheSharedSingleton() {
+  const isolatedStorage = createStoryLabCloudStorage({
+    env: { STORY_LAB_CLOUD_STORAGE: 'non_durable_memory' },
+    now: () => now
+  });
+  const sharedStorage = createStoryLabCloudStorage({ env: { STORY_LAB_CLOUD_STORAGE: 'non_durable_memory' } });
+
+  const profile = createDefaultStoryLabUserProfile(owner, { displayName: 'Isolated-Clock-Caller' });
+  const saveResult = await isolatedStorage.profileStore.saveProfile(owner, profile);
+  assert(saveResult.success, 'the clock-isolated store should accept the save');
+
+  const loadResult = await sharedStorage.profileStore.loadProfile(owner);
+  assert(
+    loadResult.success && loadResult.data === null,
+    'the shared singleton should not see a save made through an explicit-now, isolated store'
+  );
+}
+
+// Two independent `createStoryLabCloudStorage()` calls, exactly like two
+// different route handlers each calling it once — neither passing `now` — must
+// see the same records: a profile saved through one has to be visible through
+// the other. This is the shape every real call site except the account route
+// uses; `testDefaultAccountHandlerSharesNonDurableStorageWithGenerationRoutes`
+// in `tests/story-lab-account-routes.test.ts` covers the account route's own
+// call shape directly, against the real (unmodified) handler — a prior
+// version of this suite instead hand-simulated that call shape here, which
+// silently stopped matching the real code once the handler's own call site
+// was fixed (see that file's own comment on this exact regression).
+async function testNonDurableMemorySharesStoreAcrossSeparateCalls() {
+  const firstCallStorage = createStoryLabCloudStorage({ env: { STORY_LAB_CLOUD_STORAGE: 'non_durable_memory' } });
+  const secondCallStorage = createStoryLabCloudStorage({ env: { STORY_LAB_CLOUD_STORAGE: 'non_durable_memory' } });
+
+  const profile = createDefaultStoryLabUserProfile(owner, { displayName: 'Marnie' });
+  const saveResult = await firstCallStorage.profileStore.saveProfile(owner, profile);
+  assert(saveResult.success, 'the first call\'s profile store should accept the save');
+
+  const loadResult = await secondCallStorage.profileStore.loadProfile(owner);
+  assert(
+    loadResult.success && loadResult.data?.profile.displayName === 'Marnie',
+    'a second, independent createStoryLabCloudStorage() call should see the first call\'s save'
+  );
+}
+
+async function testUnsupportedModeFailsClosed() {
+  const storage = createStoryLabCloudStorage({
+    env: { STORY_LAB_CLOUD_STORAGE: 'planet-scale' },
+    now: () => now
+  });
+
+  assert(storage.mode === 'unsupported', 'an unrecognized mode value should report unsupported');
+  assert(storage.errorCode === 'STORY_LAB_CLOUD_STORAGE_UNSUPPORTED_MODE', 'unsupported mode should carry its error code');
+  assert(!storage.isConfigured(), 'unsupported mode should never report configured');
+
+  const profileResult = await storage.profileStore.loadProfile(owner);
+  assert(!profileResult.success, 'profile store should fail closed on an unsupported mode');
+
+  const projectResult = await storage.projectStore.listProjects(owner, wholeLibraryQuery);
+  assert(!projectResult.success, 'project store should fail closed on an unsupported mode');
+}
+
+async function testCloudStorageModeEnvDoesNotFallThroughToProcessEnv() {
+  const previousMode = process.env['STORY_LAB_CLOUD_STORAGE'];
+  process.env['STORY_LAB_CLOUD_STORAGE'] = 'non_durable_memory';
+
+  try {
+    const storage = createStoryLabCloudStorage({ env: {}, now: () => now });
+    assert(storage.mode === 'postgres', 'explicit empty env should not read process.env for the mode either');
+  } finally {
+    if (previousMode === undefined) {
+      delete process.env['STORY_LAB_CLOUD_STORAGE'];
+    } else {
+      process.env['STORY_LAB_CLOUD_STORAGE'] = previousMode;
+    }
+  }
 }
 
 function createProfileRow(profile: ReturnType<typeof createDefaultStoryLabUserProfile>) {

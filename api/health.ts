@@ -3,6 +3,7 @@ import { applyCorsPolicy } from './_lib/http/corsPolicy';
 import { sendMethodNotAllowed } from './_lib/http/methodNotAllowed';
 import { createRateLimitStoreConfig } from './_lib/middleware/rateLimitStoreConfig';
 import { createStoryLabJobStoreConfig } from './_lib/story-lab/jobs/storyLabJobStoreConfig';
+import { createStoryLabCloudStorage } from './_lib/story-lab/storage/storyLabCloudStorageConfig';
 import { createCriticalAlertSinkConfig } from './_lib/utils/criticalAlertSink';
 import { withUnhandledRouteFailureLogging } from './_lib/http/withUnhandledRouteFailureLogging';
 import { logError } from './_lib/utils/logger';
@@ -25,6 +26,7 @@ type HealthPayload = {
     grok: 'configured' | 'mock';
     rateLimitStore: DurableStoreHealth;
     storyLabJobStore: DurableStoreHealth;
+    storyLabCloudStorage: DurableStoreHealth;
     criticalAlerting: DurableStoreHealth;
   };
   cors: {
@@ -48,6 +50,24 @@ function isServiceDependencyDegraded(service: DurableStoreHealth): boolean {
   );
 }
 
+/**
+ * Story Lab cloud storage's `non_durable_memory` mode is not a durability
+ * tradeoff the way the rate-limit and job stores' non-durable defaults are —
+ * those keep their actual feature (per-instance rate limiting, in-process job
+ * progress) fully working. Here it means the signed-in profile/project
+ * library itself doesn't work for its purpose: `CloudLibraryService`
+ * (story-generator/src/app/cloud-library.service.ts) already treats a
+ * `storageMode: 'non_durable_memory'` response as `cloud_unavailable`,
+ * read-only-for-inspection, disabling save/load/delete. Reporting `healthy`
+ * while the client's own logic calls the same state unavailable would be
+ * exactly the "claims a capability with no working code path" defect this
+ * routine exists to catch — so this store counts a reachable `postgres`
+ * store as the only healthy state.
+ */
+function isStoryLabCloudStorageDegraded(service: DurableStoreHealth): boolean {
+  return service.mode !== 'postgres' || !service.configured;
+}
+
 async function handler(req: any, res: any) {
   const cors = applyCorsPolicy(req, res, {
     methods: HEALTH_ROUTE_METHODS
@@ -64,6 +84,7 @@ async function handler(req: any, res: any) {
   try {
     const rateLimitStoreConfig = createRateLimitStoreConfig();
     const storyLabJobStoreConfig = createStoryLabJobStoreConfig();
+    const storyLabCloudStorageConfig = createStoryLabCloudStorage();
     const rateLimitStore: DurableStoreHealth = {
       mode: rateLimitStoreConfig.mode,
       configured: rateLimitStoreConfig.isConfigured()
@@ -71,6 +92,10 @@ async function handler(req: any, res: any) {
     const storyLabJobStore: DurableStoreHealth = {
       mode: storyLabJobStoreConfig.mode,
       configured: storyLabJobStoreConfig.isConfigured()
+    };
+    const storyLabCloudStorage: DurableStoreHealth = {
+      mode: storyLabCloudStorageConfig.mode,
+      configured: storyLabCloudStorageConfig.isConfigured()
     };
     const criticalAlertSinkConfig = createCriticalAlertSinkConfig();
     const criticalAlerting: DurableStoreHealth = {
@@ -80,6 +105,7 @@ async function handler(req: any, res: any) {
     const degraded =
       isServiceDependencyDegraded(rateLimitStore)
       || isServiceDependencyDegraded(storyLabJobStore)
+      || isStoryLabCloudStorageDegraded(storyLabCloudStorage)
       || isServiceDependencyDegraded(criticalAlerting);
 
     const health: HealthPayload = {
@@ -91,6 +117,7 @@ async function handler(req: any, res: any) {
         grok: !!process.env['XAI_API_KEY'] ? 'configured' : 'mock',
         rateLimitStore,
         storyLabJobStore,
+        storyLabCloudStorage,
         criticalAlerting
       },
       cors: {

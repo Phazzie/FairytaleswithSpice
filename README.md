@@ -84,6 +84,18 @@ CRITICAL_ALERT_WEBHOOK_URL=https://hooks.slack.com/services/your/webhook/url
 
 # Development settings
 NODE_ENV=development
+
+# Optional: Story Lab cloud storage (signed-in profile + project library).
+# Defaults to `postgres` (requires DATABASE_URL) since that has always been
+# this store's only implementation; an unset DATABASE_URL degrades
+# `/api/health` (503) rather than silently erroring on every profile/project
+# request. `non_durable_memory` is a local/test convenience only, not a
+# supported production fallback: it keeps the backend from hard-erroring
+# without a database, but the Angular client already treats that mode as
+# unavailable (a signed-in library that can't actually save or sync), so
+# `/api/health` also reports it as degraded rather than healthy — see the
+# Health Check section.
+STORY_LAB_CLOUD_STORAGE=postgres
 ```
 
 ### 4. Run in Development Mode
@@ -345,10 +357,19 @@ cd tests && npm run test:integration
 GET /api/health
 ```
 Returns `200` with `status: "healthy"` normally, or `503` with `status: "degraded"`
-when the rate-limit store or Story Lab job store is misconfigured (an unsupported
-mode value, or `postgres` mode with no reachable database). Falling back to the
-in-memory/non-durable default is not itself degraded — only an unreachable
-`postgres` mode or an invalid mode value is.
+when the rate-limit store, Story Lab job store, or Story Lab cloud storage
+(signed-in profile/project library) is misconfigured. Falling back to the
+in-memory/non-durable default is not itself degraded for the rate-limit store
+or job store — those keep doing their actual job (per-instance rate limiting,
+in-process job progress) either way, so only an unsupported mode value or an
+unreachable `postgres` mode degrades them. Story Lab cloud storage is the one
+exception: its default mode is `postgres`, not a non-durable fallback (see
+Environment Setup above), and its `non_durable_memory` mode is *also*
+degraded rather than healthy — unlike the other two stores' non-durable
+defaults, this one means the signed-in profile/project library itself
+doesn't work for its purpose (the Angular client's own `CloudLibraryService`
+already treats that storage mode as unavailable). So this field is healthy
+only in a reachable `postgres` mode.
 
 `services.criticalAlerting` reports where `logCritical(...)` calls are actually
 delivered right now: `{ mode: "console" }` by default, or `{ mode: "webhook",
