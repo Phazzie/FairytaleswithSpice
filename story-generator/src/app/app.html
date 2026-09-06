@@ -947,6 +947,6 @@
 @if (isStoryLabProfileOpen()) {
   <app-story-lab-profile-panel
     (closed)="closeStoryLabProfile()"
-    (saved)="onStoryLabProfileSaved()"
+    (saved)="onStoryLabProfileSaved($event)"
   ></app-story-lab-profile-panel>
 }

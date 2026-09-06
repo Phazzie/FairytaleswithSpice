@@ -34,6 +34,7 @@ import {
   STORY_LAB_JOB_STEP_LABELS,
   SaveExportSeam,
   SavedStoryProject,
+  StoryLabUserProfile,
   WORD_BUDGETS
 } from './contracts';
 
@@ -74,6 +75,28 @@ function createSummary(overrides: Partial<StorySummary> = {}): StorySummary {
     spicyLevel: overrides.spicyLevel ?? 3,
     createdAt: overrides.createdAt ?? now,
     updatedAt: overrides.updatedAt ?? now
+  };
+}
+
+function createStoryLabProfile(overrides: Partial<StoryLabUserProfile['preferences']> = {}): StoryLabUserProfile {
+  const now = new Date().toISOString();
+  return {
+    userId: 'user-owner',
+    displayName: 'Avery',
+    preferences: {
+      defaultHeatContract: {
+        adultOnlyConfirmed: true,
+        tensionMode: 'dangerous_proximity',
+        intimacyBoundary: 'literary_on_page',
+        noGoContent: 'no permanent character death'
+      },
+      favoriteCreatures: ['witch'],
+      favoriteTones: ['mystery'],
+      librarySort: 'updated_desc',
+      ...overrides
+    },
+    createdAt: now,
+    updatedAt: now
   };
 }
 
@@ -1445,10 +1468,48 @@ describe('App', () => {
     component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
     component.isStoryLabProfileOpen.set(true);
 
-    component.onStoryLabProfileSaved();
+    component.onStoryLabProfileSaved(createStoryLabProfile());
 
     expect(component.isStoryLabProfileOpen()).toBeFalse();
     expect(storyService.listCloudStoryProjects).toHaveBeenCalled();
+  });
+
+  // Before this, PR70_RECOVERY_CHANGELOG.md recorded `defaultHeatContract`,
+  // `favoriteCreatures`, and `favoriteTones` as persisted with "no reader in
+  // either tree" — the profile panel made them editable, but a saved
+  // "default" nothing ever applied would have been the same false
+  // affordance the dead "Profile" button itself was.
+  it('seeds the still-blank blueprint from the saved profile defaults', () => {
+    storyService.listCloudStoryProjects.and.returnValue(of({
+      success: true,
+      data: { ownerUserId: 'user-test', storageMode: 'non_durable_memory', projects: [], totalProjectCount: 0 }
+    }));
+    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
+
+    component.onStoryLabProfileSaved(createStoryLabProfile());
+
+    expect(component.blueprint().creature).toBe('witch');
+    expect(component.blueprint().tone).toBe('mystery');
+    expect(component.blueprint().heatContract).toEqual({
+      adultOnlyConfirmed: true,
+      tensionMode: 'dangerous_proximity',
+      intimacyBoundary: 'literary_on_page',
+      noGoContent: 'no permanent character death'
+    });
+  });
+
+  it('does not overwrite an in-progress story session with the saved profile defaults', () => {
+    storyService.listCloudStoryProjects.and.returnValue(of({
+      success: true,
+      data: { ownerUserId: 'user-test', storageMode: 'non_durable_memory', projects: [], totalProjectCount: 0 }
+    }));
+    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
+    seedWorkbenchForContinuation();
+    const blueprintBeforeSave = component.blueprint();
+
+    component.onStoryLabProfileSaved(createStoryLabProfile());
+
+    expect(component.blueprint()).toEqual(blueprintBeforeSave);
   });
 
   it('keeps non-durable loaded projects out of cloud-synced state', () => {

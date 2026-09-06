@@ -1,7 +1,9 @@
+import { WritableSignal, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
 import { StoryLabProfilePanelComponent } from './story-lab-profile-panel.component';
 import { StoryLabUserProfile } from '../contracts';
+import { AuthService } from '../auth.service';
 
 function createProfile(overrides: Partial<StoryLabUserProfile['preferences']> = {}): StoryLabUserProfile {
   const now = '2026-06-08T08:38:00.000Z';
@@ -28,10 +30,14 @@ describe('StoryLabProfilePanelComponent', () => {
   let component: StoryLabProfilePanelComponent;
   let fixture: ComponentFixture<StoryLabProfilePanelComponent>;
   let httpMock: HttpTestingController;
+  let sessionEpoch: WritableSignal<number>;
 
   beforeEach(async () => {
+    sessionEpoch = signal(0);
+
     await TestBed.configureTestingModule({
-      imports: [StoryLabProfilePanelComponent, HttpClientTestingModule]
+      imports: [StoryLabProfilePanelComponent, HttpClientTestingModule],
+      providers: [{ provide: AuthService, useValue: { sessionEpoch } }]
     }).compileComponents();
 
     fixture = TestBed.createComponent(StoryLabProfilePanelComponent);
@@ -132,5 +138,66 @@ describe('StoryLabProfilePanelComponent', () => {
     component.close();
 
     expect(closedSpy).toHaveBeenCalled();
+  });
+
+  it('does not close or save while a save request is already in flight', () => {
+    fixture.detectChanges();
+    httpMock.expectOne('/api/story-lab/account/profile').flush({ success: true, data: createProfile() });
+
+    component.save();
+    httpMock.expectOne({ method: 'PUT' });
+
+    const closedSpy = jasmine.createSpy('closed');
+    component.closed.subscribe(closedSpy);
+    component.close();
+    component.dismissBackdrop();
+
+    expect(closedSpy).not.toHaveBeenCalled();
+  });
+
+  // Mirrors `CloudLibraryService`'s own stale-response guard: a profile GET/PUT
+  // that resolves after the signed-in account changed (sign-out, or a switch
+  // in another tab) must never populate the UI with another account's data —
+  // including the free-text "no-go content" notes this profile carries.
+  describe('account-identity staleness guard', () => {
+    it('discards a load response that arrives after the session epoch changes', () => {
+      fixture.detectChanges();
+      const request = httpMock.expectOne('/api/story-lab/account/profile');
+
+      sessionEpoch.set(1);
+      request.flush({ success: true, data: createProfile() });
+
+      expect(component.loadState()).toBe('loading');
+      expect(component.profile()).toBeNull();
+    });
+
+    it('discards a save response that arrives after the session epoch changes', () => {
+      fixture.detectChanges();
+      httpMock.expectOne('/api/story-lab/account/profile').flush({ success: true, data: createProfile() });
+
+      const savedSpy = jasmine.createSpy('saved');
+      component.saved.subscribe(savedSpy);
+      component.save();
+      const putRequest = httpMock.expectOne({ method: 'PUT' });
+
+      sessionEpoch.set(1);
+      putRequest.flush({ success: true, data: createProfile({ librarySort: 'title_asc' }) });
+
+      expect(savedSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('keyboard interaction', () => {
+    it('closes on Escape', () => {
+      fixture.detectChanges();
+      httpMock.expectOne('/api/story-lab/account/profile').flush({ success: true, data: createProfile() });
+
+      const closedSpy = jasmine.createSpy('closed');
+      component.closed.subscribe(closedSpy);
+
+      component.onDialogKeydown(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+      expect(closedSpy).toHaveBeenCalled();
+    });
   });
 });

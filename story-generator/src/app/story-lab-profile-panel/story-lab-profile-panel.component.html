@@ -1,15 +1,24 @@
-<div class="profile-overlay" role="presentation" (click)="close()">
+<div class="profile-overlay" role="presentation" (click)="dismissBackdrop()">
   <section
+    #panel
     class="profile-panel"
     role="dialog"
     aria-modal="true"
     aria-labelledby="story-lab-profile-heading"
     data-testid="story-lab-profile-panel"
+    tabindex="-1"
     (click)="$event.stopPropagation()"
+    (keydown)="onDialogKeydown($event)"
   >
     <header class="profile-panel__header">
       <h2 id="story-lab-profile-heading">Story Lab profile</h2>
-      <button type="button" class="ghost compact" data-testid="story-lab-profile-close" (click)="close()">Close</button>
+      <button
+        type="button"
+        class="ghost compact"
+        data-testid="story-lab-profile-close"
+        (click)="close()"
+        [disabled]="isSaving()"
+      >Close</button>
     </header>
 
     <p *ngIf="loadState() === 'loading'" class="muted" data-testid="story-lab-profile-loading">Loading your profile…</p>
@@ -20,7 +29,7 @@
     </p>
 
     <form *ngIf="loadState() === 'loaded' && profile() as currentProfile" class="profile-panel__form" (ngSubmit)="save()">
-      <fieldset>
+      <fieldset [disabled]="isSaving()">
         <legend>Favorite creatures</legend>
         <div class="chip-grid">
           <button
@@ -38,7 +47,7 @@
         </div>
       </fieldset>
 
-      <fieldset>
+      <fieldset [disabled]="isSaving()">
         <legend>Favorite tones</legend>
         <div class="chip-grid">
           <button
@@ -56,7 +65,7 @@
         </div>
       </fieldset>
 
-      <fieldset>
+      <fieldset [disabled]="isSaving()">
         <legend>Default heat contract</legend>
 
         <label class="checkbox-row">
@@ -112,7 +121,7 @@
         </label>
       </fieldset>
 
-      <fieldset>
+      <fieldset [disabled]="isSaving()">
         <legend>Content boundaries</legend>
         <label class="field-row">
           <span>Notes for every story you start</span>
@@ -126,7 +135,7 @@
         </label>
       </fieldset>
 
-      <fieldset>
+      <fieldset [disabled]="isSaving()">
         <legend>Library sort order</legend>
         <select
           data-testid="story-lab-profile-library-sort"

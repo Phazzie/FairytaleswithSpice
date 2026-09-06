@@ -1,5 +1,16 @@
 import { CommonModule } from '@angular/common';
-import { Component, EventEmitter, OnInit, Output, inject, signal } from '@angular/core';
+import {
+  AfterViewInit,
+  Component,
+  ElementRef,
+  EventEmitter,
+  OnInit,
+  Output,
+  ViewChild,
+  effect,
+  inject,
+  signal
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
   CreatureArchetype,
@@ -19,6 +30,7 @@ import {
   toneOptions
 } from '../story-lab-option-copy';
 import { StoryService } from '../story.service';
+import { AuthService } from '../auth.service';
 
 type ProfilePreferences = StoryLabUserProfile['preferences'];
 
@@ -29,6 +41,9 @@ const LIBRARY_SORT_OPTIONS: ChoiceOption<StoryLabLibrarySort>[] = [
   { id: 'created_desc', label: 'Newest first' },
   { id: 'title_asc', label: 'Title (A–Z)' }
 ];
+
+const FOCUSABLE_SELECTOR = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), '
+  + 'textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 function toggleMember<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter(item => item !== value) : [...list, value];
@@ -56,6 +71,13 @@ function extractApiErrorMessage(error: { error?: { error?: { message?: string } 
  * spec file, so every signed-in user was permanently stuck on whatever
  * `createDefaultStoryLabUserProfile` answered, with no screen that told them
  * a preference existed.
+ *
+ * Guards its requests against `AuthService.sessionEpoch()` the same way
+ * `CloudLibraryService` guards its own — a response arriving after the
+ * signed-in account changed (a sign-out, or a switch in another tab) is
+ * discarded rather than applied, and the panel closes itself the moment the
+ * epoch moves while it's open, so one account's profile — including its
+ * private "no-go content" notes — can never render under another.
  */
 @Component({
   selector: 'app-story-lab-profile-panel',
@@ -64,11 +86,14 @@ function extractApiErrorMessage(error: { error?: { error?: { message?: string } 
   templateUrl: './story-lab-profile-panel.component.html',
   styleUrl: './story-lab-profile-panel.component.css'
 })
-export class StoryLabProfilePanelComponent implements OnInit {
+export class StoryLabProfilePanelComponent implements OnInit, AfterViewInit {
   private readonly storyService = inject(StoryService);
+  private readonly authService = inject(AuthService);
 
   @Output() readonly closed = new EventEmitter<void>();
   @Output() readonly saved = new EventEmitter<StoryLabUserProfile>();
+
+  @ViewChild('panel') private readonly panelRef?: ElementRef<HTMLElement>;
 
   readonly creatureOptions: CreatureOption[] = creatureOptions;
   readonly toneOptions: ChoiceOption<NarrativeTone>[] = toneOptions;
@@ -82,16 +107,42 @@ export class StoryLabProfilePanelComponent implements OnInit {
   readonly saveError = signal<string | null>(null);
   readonly profile = signal<StoryLabUserProfile | null>(null);
 
+  // Captured once at construction — the epoch this panel was opened under.
+  // `AuthService.sessionEpoch()` advances on every sign-out and on every
+  // account switch (even one with no intermediate signed-out state), so
+  // comparing against it is what lets a response know whether the identity
+  // that requested it still holds.
+  private readonly openedSessionEpoch = this.authService.sessionEpoch();
+  private lastFocusedElement: HTMLElement | null = null;
+
+  constructor() {
+    effect(() => {
+      if (this.authService.sessionEpoch() !== this.openedSessionEpoch) {
+        this.close();
+      }
+    });
+  }
+
   ngOnInit(): void {
+    this.lastFocusedElement = document.activeElement as HTMLElement | null;
     this.loadProfile();
+  }
+
+  ngAfterViewInit(): void {
+    this.panelRef?.nativeElement.focus();
   }
 
   loadProfile(): void {
     this.loadState.set('loading');
     this.loadError.set(null);
+    const requestEpoch = this.authService.sessionEpoch();
 
     this.storyService.getStoryLabProfile().subscribe({
       next: response => {
+        if (this.authService.sessionEpoch() !== requestEpoch) {
+          return;
+        }
+
         if (!response.success || !response.data) {
           this.loadState.set('error');
           this.loadError.set(response.error?.message ?? 'Could not load your Story Lab profile.');
@@ -102,6 +153,10 @@ export class StoryLabProfilePanelComponent implements OnInit {
         this.loadState.set('loaded');
       },
       error: error => {
+        if (this.authService.sessionEpoch() !== requestEpoch) {
+          return;
+        }
+
         this.loadState.set('error');
         this.loadError.set(extractApiErrorMessage(error, 'Could not load your Story Lab profile.'));
       }
@@ -168,9 +223,14 @@ export class StoryLabProfilePanelComponent implements OnInit {
 
     this.isSaving.set(true);
     this.saveError.set(null);
+    const requestEpoch = this.authService.sessionEpoch();
 
     this.storyService.updateStoryLabProfile(profile).subscribe({
       next: response => {
+        if (this.authService.sessionEpoch() !== requestEpoch) {
+          return;
+        }
+
         this.isSaving.set(false);
         if (!response.success || !response.data) {
           this.saveError.set(response.error?.message ?? 'Could not save your Story Lab profile.');
@@ -181,6 +241,10 @@ export class StoryLabProfilePanelComponent implements OnInit {
         this.saved.emit(response.data);
       },
       error: error => {
+        if (this.authService.sessionEpoch() !== requestEpoch) {
+          return;
+        }
+
         this.isSaving.set(false);
         this.saveError.set(extractApiErrorMessage(error, 'Could not save your Story Lab profile.'));
       }
@@ -188,7 +252,51 @@ export class StoryLabProfilePanelComponent implements OnInit {
   }
 
   close(): void {
+    if (this.isSaving()) {
+      return;
+    }
+
     this.closed.emit();
+    this.lastFocusedElement?.focus();
+  }
+
+  dismissBackdrop(): void {
+    this.close();
+  }
+
+  /**
+   * A minimal focus trap: Tab from the last focusable control wraps to the
+   * first, and Shift+Tab from the first wraps to the last, so keyboard focus
+   * cannot leave the dialog into the account/story controls behind it while
+   * it's open.
+   */
+  onDialogKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      this.close();
+      return;
+    }
+
+    if (event.key !== 'Tab') {
+      return;
+    }
+
+    const focusable = this.panelRef?.nativeElement.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
+    if (!focusable || focusable.length === 0) {
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement;
+
+    if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
   }
 
   private updatePreferences(update: (preferences: ProfilePreferences) => ProfilePreferences): void {

@@ -67,6 +67,7 @@ import {
   StoryLabJob,
   StoryLabJobStatus,
   STORY_LAB_JOB_STEP_LABELS,
+  StoryLabUserProfile,
   StoryWorkbenchSession,
   ThemeSeed,
   WORD_BUDGETS,
@@ -1908,13 +1909,42 @@ export class App implements OnDestroy {
     this.isStoryLabProfileOpen.set(false);
   }
 
-  onStoryLabProfileSaved(): void {
+  onStoryLabProfileSaved(profile: StoryLabUserProfile): void {
     this.isStoryLabProfileOpen.set(false);
+    this.applyStoryLabProfileDefaults(profile);
     // A changed `librarySort` only takes effect on the next `/account/projects`
     // read (see `readLibrarySort` in `accountRouteHandlers.ts`), so without
     // this the saved preference would silently wait for whatever unrelated
     // action next refreshed the library.
     this.refreshCloudLibrary();
+  }
+
+  /**
+   * Seeds the still-blank blueprint from the profile's saved defaults —
+   * favorite creature/tone and default heat contract — the moment they're
+   * saved. Before this, PR70_RECOVERY_CHANGELOG.md recorded these three
+   * fields as "stored, validated, redacted and persisted with no reader in
+   * either tree" — the profile panel this method backs made them editable,
+   * but editable is not applied, and a "default" nothing ever reads is the
+   * same false affordance the "Profile" button itself used to be.
+   *
+   * Only applies before a story exists in this session: once
+   * `workbench().story` is set the reader is mid-story, and silently
+   * rewriting the heat contract or creature underneath them because they
+   * happened to update their profile would be its own bug.
+   */
+  private applyStoryLabProfileDefaults(profile: StoryLabUserProfile): void {
+    if (this.workbench().story) {
+      return;
+    }
+
+    const { favoriteCreatures, favoriteTones, defaultHeatContract } = profile.preferences;
+    this.blueprint.update(current => ({
+      ...current,
+      creature: favoriteCreatures[0] ?? current.creature,
+      tone: favoriteTones[0] ?? current.tone,
+      heatContract: this.normalizeHeatContract(defaultHeatContract)
+    }));
   }
 
   saveActiveProjectToCloud() {
