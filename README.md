@@ -84,6 +84,17 @@ CRITICAL_ALERT_WEBHOOK_URL=https://hooks.slack.com/services/your/webhook/url
 
 # Development settings
 NODE_ENV=development
+
+# Optional: Story Lab cloud storage (signed-in profile + project library).
+# Defaults to `postgres` (requires DATABASE_URL) since that has always been
+# this store's only implementation. Set to `non_durable_memory` to run
+# signed-in save/load without a database — profiles/projects then live only
+# in this process's memory and are lost on restart/redeploy, and are not
+# shared across separate Vercel function invocations. An unset DATABASE_URL
+# with the default `postgres` mode degrades `/api/health` (503) rather than
+# silently erroring on every profile/project request — see the Health Check
+# section.
+STORY_LAB_CLOUD_STORAGE=postgres
 ```
 
 ### 4. Run in Development Mode
@@ -345,10 +356,15 @@ cd tests && npm run test:integration
 GET /api/health
 ```
 Returns `200` with `status: "healthy"` normally, or `503` with `status: "degraded"`
-when the rate-limit store or Story Lab job store is misconfigured (an unsupported
-mode value, or `postgres` mode with no reachable database). Falling back to the
-in-memory/non-durable default is not itself degraded — only an unreachable
-`postgres` mode or an invalid mode value is.
+when the rate-limit store, Story Lab job store, or Story Lab cloud storage
+(signed-in profile/project library) is misconfigured (an unsupported mode
+value, or `postgres` mode with no reachable database). Falling back to the
+in-memory/non-durable default is not itself degraded for the rate-limit store
+or job store — only an unreachable `postgres` mode or an invalid mode value
+is. Story Lab cloud storage is the one exception: unlike the other two, its
+default mode is `postgres`, not a non-durable fallback (see Environment Setup
+above), so an unset `DATABASE_URL` degrades health by default here until
+`STORY_LAB_CLOUD_STORAGE=non_durable_memory` is set explicitly.
 
 `services.criticalAlerting` reports where `logCritical(...)` calls are actually
 delivered right now: `{ mode: "console" }` by default, or `{ mode: "webhook",

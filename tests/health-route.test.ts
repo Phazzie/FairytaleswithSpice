@@ -147,7 +147,10 @@ async function testHealthyWithConfiguredGrokKey(): Promise<void> {
 }
 
 async function testDegradedOnUnsupportedRateLimitStoreMode(): Promise<void> {
-  const response = await get({ RATE_LIMIT_STORE: 'planet-scale' });
+  // Cloud storage's own default-to-postgres degradation is covered
+  // separately below; pinned to non_durable_memory here so this test's
+  // degraded/503 assertions are attributable only to the rate limit store.
+  const response = await get({ RATE_LIMIT_STORE: 'planet-scale', STORY_LAB_CLOUD_STORAGE: 'non_durable_memory' });
 
   assert(response.statusCode === 503, 'an unsupported rate limit store mode should answer 503');
   const data = dataOf(response);
@@ -157,7 +160,7 @@ async function testDegradedOnUnsupportedRateLimitStoreMode(): Promise<void> {
 }
 
 async function testDegradedOnUnsupportedJobStoreMode(): Promise<void> {
-  const response = await get({ STORY_LAB_JOB_STORE: 'planet-scale' });
+  const response = await get({ STORY_LAB_JOB_STORE: 'planet-scale', STORY_LAB_CLOUD_STORAGE: 'non_durable_memory' });
 
   assert(response.statusCode === 503, 'an unsupported job store mode should answer 503');
   const data = dataOf(response);
@@ -166,7 +169,11 @@ async function testDegradedOnUnsupportedJobStoreMode(): Promise<void> {
 }
 
 async function testDegradedOnUnreachablePostgresRateLimitStore(): Promise<void> {
-  const response = await get({ RATE_LIMIT_STORE: 'postgres', DATABASE_URL: undefined });
+  const response = await get({
+    RATE_LIMIT_STORE: 'postgres',
+    DATABASE_URL: undefined,
+    STORY_LAB_CLOUD_STORAGE: 'non_durable_memory'
+  });
 
   assert(response.statusCode === 503, 'a postgres rate limit store with no DATABASE_URL should answer 503');
   const data = dataOf(response);
@@ -176,7 +183,11 @@ async function testDegradedOnUnreachablePostgresRateLimitStore(): Promise<void> 
 }
 
 async function testDegradedOnUnreachablePostgresJobStore(): Promise<void> {
-  const response = await get({ STORY_LAB_JOB_STORE: 'postgres', DATABASE_URL: undefined });
+  const response = await get({
+    STORY_LAB_JOB_STORE: 'postgres',
+    DATABASE_URL: undefined,
+    STORY_LAB_CLOUD_STORAGE: 'non_durable_memory'
+  });
 
   assert(response.statusCode === 503, 'a postgres job store with no DATABASE_URL should answer 503');
   const data = dataOf(response);
@@ -282,7 +293,11 @@ async function testCriticalAlertingReportsConsoleOutsideProductionEvenWhenUrlCon
 // attempt would fail — indistinguishable from working alerting until the
 // first real emergency.
 async function testCriticalAlertingDegradedOnMalformedWebhookUrl(): Promise<void> {
-  const response = await get({ NODE_ENV: 'production', CRITICAL_ALERT_WEBHOOK_URL: 'not-a-url' });
+  const response = await get({
+    NODE_ENV: 'production',
+    CRITICAL_ALERT_WEBHOOK_URL: 'not-a-url',
+    STORY_LAB_CLOUD_STORAGE: 'non_durable_memory'
+  });
 
   assert(response.statusCode === 503, 'a malformed critical alert webhook URL should answer 503');
   const data = dataOf(response);

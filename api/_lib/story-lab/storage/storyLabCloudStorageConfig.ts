@@ -35,6 +35,18 @@ import {
 const STORY_LAB_CLOUD_STORAGE_ENV_VAR = 'STORY_LAB_CLOUD_STORAGE';
 const DEFAULT_STORY_LAB_CLOUD_STORAGE_MODE = 'postgres';
 
+// Shared at module scope, exactly like `sharedInMemoryRateLimitStore` in
+// `rateLimitStoreConfig.ts` and the exported `nonDurableStoryLabJobStore`
+// singleton in `jobStore.ts`: every one of the 5 call sites into
+// `createStoryLabCloudStorage()` must see the same records, not a fresh
+// `Map` per call — otherwise a profile saved through the account route would
+// be invisible to the job/genesis/continuation routes within the same
+// process. This still does not share state across separate Vercel function
+// invocations; that limitation is identical to, and no worse than, the one
+// already accepted for the rate-limit and job-store non-durable defaults.
+const sharedNonDurableStoryLabProfileStore = createNonDurableInMemoryStoryLabProfileStore();
+const sharedNonDurableStoryProjectStore = createNonDurableInMemoryStoryProjectStore();
+
 export interface StoryLabCloudQueryExecutor extends PostgresProfileQueryExecutor, PostgresQueryExecutor {}
 
 export type StoryLabCloudStorageConfigMode = 'postgres' | 'non_durable_memory' | 'unsupported';
@@ -73,8 +85,8 @@ export function createStoryLabCloudStorage(
   const normalizedMode = normalizeDurableStoreMode(requestedMode);
 
   if (normalizedMode === 'non_durable_memory' || normalizedMode === 'memory') {
-    const profileStore = options.nonDurableProfileStore ?? createNonDurableInMemoryStoryLabProfileStore({ now: options.now });
-    const projectStore = options.nonDurableProjectStore ?? createNonDurableInMemoryStoryProjectStore({ now: options.now });
+    const profileStore = options.nonDurableProfileStore ?? sharedNonDurableStoryLabProfileStore;
+    const projectStore = options.nonDurableProjectStore ?? sharedNonDurableStoryProjectStore;
     return {
       requestedMode,
       mode: 'non_durable_memory',
