@@ -33,7 +33,8 @@ The desired end state is:
 - [x] Merge review-thread cleanup PRs #174, #175, #176, #177, #178, and #179.
 - [ ] Triage #152 until every Story Lab recovery review thread is replied to and either resolved or explicitly tracked.
 - [ ] Triage #153 until every legacy review thread is replied to and either resolved, tracked, or closed as obsolete/superseded.
-- [x] PR #194 closed unmerged on 2026-08-28 without this slice's action; superseded by later dependency work. As of 2026-09-06, the live dependency-follow-up queue is PR #322 (lockfile-only advisory remediation, `PR70_RECOVERY_LEDGER.md`) and Dependabot's current grouped PR #327, which repeats #194's original mixed-major-bump problem. Track further Dependabot triage there, not against #194.
+- [x] PR #194 closed unmerged on 2026-08-28 without this slice's action; superseded by later dependency work.
+- [ ] Resolve the current Dependabot follow-up. As of 2026-09-06, the live queue is PR #322 (lockfile-only advisory remediation, `PR70_RECOVERY_LEDGER.md`) and Dependabot's current grouped PR #327, which repeats #194's original mixed-major-bump problem — neither is merged, closed, or replaced yet. See Slice 4 below.
 - [ ] Complete the auth/database live integration gate.
 - [ ] Complete the durable job correctness gate.
 - [ ] Complete the preflight/tooling drift gate.
