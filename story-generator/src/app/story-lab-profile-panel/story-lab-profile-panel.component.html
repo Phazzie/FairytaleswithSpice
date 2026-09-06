@@ -1,0 +1,153 @@
+<div class="profile-overlay" role="presentation" (click)="close()">
+  <section
+    class="profile-panel"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="story-lab-profile-heading"
+    data-testid="story-lab-profile-panel"
+    (click)="$event.stopPropagation()"
+  >
+    <header class="profile-panel__header">
+      <h2 id="story-lab-profile-heading">Story Lab profile</h2>
+      <button type="button" class="ghost compact" data-testid="story-lab-profile-close" (click)="close()">Close</button>
+    </header>
+
+    <p *ngIf="loadState() === 'loading'" class="muted" data-testid="story-lab-profile-loading">Loading your profile…</p>
+
+    <p *ngIf="loadState() === 'error'" class="field-error" role="alert" data-testid="story-lab-profile-load-error">
+      {{ loadError() }}
+      <button type="button" class="ghost compact" (click)="loadProfile()">Retry</button>
+    </p>
+
+    <form *ngIf="loadState() === 'loaded' && profile() as currentProfile" class="profile-panel__form" (ngSubmit)="save()">
+      <fieldset>
+        <legend>Favorite creatures</legend>
+        <div class="chip-grid">
+          <button
+            type="button"
+            class="chip"
+            data-testid="story-lab-profile-creature"
+            [attr.data-creature-id]="creature.id"
+            *ngFor="let creature of creatureOptions"
+            [class.chip--active]="isCreatureSelected(creature.id)"
+            [attr.aria-pressed]="isCreatureSelected(creature.id)"
+            (click)="toggleCreature(creature.id)"
+          >
+            {{ creature.label }}
+          </button>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Favorite tones</legend>
+        <div class="chip-grid">
+          <button
+            type="button"
+            class="chip"
+            data-testid="story-lab-profile-tone"
+            [attr.data-tone-id]="tone.id"
+            *ngFor="let tone of toneOptions"
+            [class.chip--active]="isToneSelected(tone.id)"
+            [attr.aria-pressed]="isToneSelected(tone.id)"
+            (click)="toggleTone(tone.id)"
+          >
+            {{ tone.label }}
+          </button>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Default heat contract</legend>
+
+        <label class="checkbox-row">
+          <input
+            type="checkbox"
+            data-testid="story-lab-profile-adult-only"
+            [ngModel]="currentProfile.preferences.defaultHeatContract.adultOnlyConfirmed"
+            name="adultOnlyConfirmed"
+            (ngModelChange)="updateAdultOnlyConfirmed($event)"
+          />
+          Confirm adult-only content by default
+        </label>
+
+        <p class="eyebrow">Tension</p>
+        <div class="chip-grid">
+          <button
+            type="button"
+            class="chip"
+            data-testid="story-lab-profile-tension"
+            *ngFor="let option of heatTensionOptions"
+            [class.chip--active]="currentProfile.preferences.defaultHeatContract.tensionMode === option.id"
+            [attr.aria-pressed]="currentProfile.preferences.defaultHeatContract.tensionMode === option.id"
+            (click)="updateTensionMode(option.id)"
+          >
+            {{ option.label }}
+          </button>
+        </div>
+
+        <p class="eyebrow">Intimacy boundary</p>
+        <div class="chip-grid">
+          <button
+            type="button"
+            class="chip"
+            data-testid="story-lab-profile-boundary"
+            *ngFor="let option of heatBoundaryOptions"
+            [class.chip--active]="currentProfile.preferences.defaultHeatContract.intimacyBoundary === option.id"
+            [attr.aria-pressed]="currentProfile.preferences.defaultHeatContract.intimacyBoundary === option.id"
+            (click)="updateIntimacyBoundary(option.id)"
+          >
+            {{ option.label }}
+          </button>
+        </div>
+
+        <label class="field-row">
+          <span>No-go content</span>
+          <textarea
+            data-testid="story-lab-profile-no-go"
+            rows="2"
+            [ngModel]="currentProfile.preferences.defaultHeatContract.noGoContent"
+            name="noGoContent"
+            (ngModelChange)="updateNoGoContent($event)"
+          ></textarea>
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Content boundaries</legend>
+        <label class="field-row">
+          <span>Notes for every story you start</span>
+          <textarea
+            data-testid="story-lab-profile-content-boundaries"
+            rows="3"
+            [ngModel]="currentProfile.preferences.contentBoundaries"
+            name="contentBoundaries"
+            (ngModelChange)="updateContentBoundaries($event)"
+          ></textarea>
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Library sort order</legend>
+        <select
+          data-testid="story-lab-profile-library-sort"
+          [ngModel]="currentProfile.preferences.librarySort"
+          name="librarySort"
+          (ngModelChange)="updateLibrarySort($event)"
+        >
+          <option *ngFor="let option of librarySortOptions" [ngValue]="option.id">{{ option.label }}</option>
+        </select>
+      </fieldset>
+
+      <p *ngIf="saveError() as error" class="field-error" role="alert" data-testid="story-lab-profile-save-error">
+        {{ error }}
+      </p>
+
+      <div class="profile-panel__actions">
+        <button type="button" class="ghost compact" (click)="close()" [disabled]="isSaving()">Cancel</button>
+        <button type="submit" class="primary compact" data-testid="story-lab-profile-save" [disabled]="isSaving()">
+          {{ isSaving() ? 'Saving…' : 'Save profile' }}
+        </button>
+      </div>
+    </form>
+  </section>
+</div>

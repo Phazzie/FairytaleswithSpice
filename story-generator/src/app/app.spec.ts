@@ -1416,6 +1416,41 @@ describe('App', () => {
     expect(component.cloudLibrarySyncState().message).toBe('Generate a story before saving to cloud.');
   });
 
+  // Before this was wired up, the "Profile" button (shown whenever
+  // `cloudAccountActionLabel()` returns `'Profile'`, i.e. `cloud_synced`)
+  // called `showCloudAccountSetupStatus()`, which only pops an "Account
+  // connected" toast — there was no way to reach an actual profile editor.
+  it('opens the Story Lab profile panel instead of the setup-status toast once the account is cloud-synced', () => {
+    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
+    expect(component.cloudAccountActionLabel()).toBe('Profile');
+
+    component.handleCloudAccountAction();
+
+    expect(component.isStoryLabProfileOpen()).toBeTrue();
+  });
+
+  it('still runs the connect/status flow for every other account sync mode', () => {
+    component.cloudLibrarySyncState.set({ mode: 'local_only' });
+
+    component.handleCloudAccountAction();
+
+    expect(component.isStoryLabProfileOpen()).toBeFalse();
+  });
+
+  it('closes the profile panel and refreshes the cloud library once a profile save is reported', () => {
+    storyService.listCloudStoryProjects.and.returnValue(of({
+      success: true,
+      data: { ownerUserId: 'user-test', storageMode: 'non_durable_memory', projects: [], totalProjectCount: 0 }
+    }));
+    component.cloudLibrarySyncState.set({ mode: 'cloud_synced' });
+    component.isStoryLabProfileOpen.set(true);
+
+    component.onStoryLabProfileSaved();
+
+    expect(component.isStoryLabProfileOpen()).toBeFalse();
+    expect(storyService.listCloudStoryProjects).toHaveBeenCalled();
+  });
+
   it('keeps non-durable loaded projects out of cloud-synced state', () => {
     const payload = seedWorkbenchForContinuation({
       summary: createSummary({ storyId: 'story-cloud', title: 'Cloud Chapel' }),
