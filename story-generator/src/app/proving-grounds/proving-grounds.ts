@@ -458,9 +458,10 @@ export class ProvingGroundsComponent implements OnInit {
         const testResult = this.createTestResult(result.data, template, prompts, directives, Date.now() - startTime);
         this.currentTest.set(testResult);
         this.addToHistory(testResult);
+        const chapterWord = testResult.chapterCount === 1 ? 'chapter' : 'chapters';
         this.statusMessage = testResult.isMockGeneration
           ? 'Generated with offline mock chapters — not real AI output. Do not use this result for prompt comparisons.'
-          : `Generated ${testResult.chapterCount} chapter${testResult.chapterCount === 1 ? '' : 's'} for comparison.`;
+          : `Generated ${testResult.chapterCount} ${chapterWord} for comparison.`;
         this.isGenerating.set(false);
       },
       error: error => {

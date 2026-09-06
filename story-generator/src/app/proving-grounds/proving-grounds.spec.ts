@@ -526,7 +526,7 @@ describe('ProvingGroundsComponent', () => {
     // double is the *error*-severity call `handleHttpError` makes.
     const errorSeverityCalls = (errorLogging.logError as jasmine.Spy).calls.all()
       .filter(call => (call.args[2] ?? 'error') === 'error');
-    expect(errorSeverityCalls.length).toBe(1);
+    expect(errorSeverityCalls).toHaveSize(1);
     expect(errorSeverityCalls[0].args[1]).toBe('StoryService.beginStory');
   });
 
@@ -591,7 +591,7 @@ describe('ProvingGroundsComponent', () => {
     fixture.detectChanges();
     tick();
 
-    const panel: HTMLElement | null = fixture.nativeElement.querySelector('[role="dialog"]');
+    const panel: HTMLElement | null = fixture.nativeElement.querySelector('dialog');
     expect(panel).withContext('the prompt preview panel should render').toBeTruthy();
     expect(document.activeElement).toBe(panel);
 
@@ -606,7 +606,7 @@ describe('ProvingGroundsComponent', () => {
     fixture.detectChanges();
     tick();
 
-    const panel: HTMLElement = fixture.nativeElement.querySelector('[role="dialog"]');
+    const panel: HTMLElement = fixture.nativeElement.querySelector('dialog');
     panel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     fixture.detectChanges();
 

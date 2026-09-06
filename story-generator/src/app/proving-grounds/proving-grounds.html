@@ -627,18 +627,28 @@
     browser `alert()`, can't be scrolled or selected on most platforms, and is
     a no-op during SSR — a panel bound to a signal has none of those limits.
 
-    Structure and focus handling (role="presentation" backdrop, tabindex="-1"
-    panel focused on open, onPromptPreviewKeydown's Escape/Tab trap, restoring
-    focus to whatever opened it) match `StoryLabProfilePanelComponent`'s
-    dialog exactly, rather than inventing a second pattern for the same job.
+    A native `<dialog>` rather than `role="dialog"` on a `<div>`/`<section>`
+    (`StoryLabProfilePanelComponent`'s pattern, which this matched at first):
+    SonarCloud's HTML ruleset prefers the real element, and it costs nothing
+    here since focus-on-open, the Tab-wrap trap, Escape-to-close, and
+    restoring focus on close (`onPromptPreviewKeydown`, mirroring that
+    component's `onDialogKeydown`) are all still implemented the same way —
+    only the tag name and the now-implicit dialog semantics changed. The
+    backdrop keeps a `(keydown.escape)` of its own too: a `role="presentation"`
+    `<div>` with a click handler and no keyboard equivalent is exactly the
+    pairing SonarCloud's `onClick`/`onKeyDown` rule polices, independently of
+    whether the reader's focus ever actually lands there.
   -->
   @if (promptPreview(); as preview) {
-    <div class="prompt-preview-overlay" role="presentation" (click)="closePromptPreview()">
-      <section
+    <div
+      class="prompt-preview-overlay"
+      role="presentation"
+      (click)="closePromptPreview()"
+      (keydown.escape)="closePromptPreview()">
+      <dialog
         #promptPreviewPanel
+        open
         class="prompt-preview-panel"
-        role="dialog"
-        aria-modal="true"
         [attr.aria-label]="preview.templateName + ' filled prompts'"
         tabindex="-1"
         (click)="$event.stopPropagation()"
@@ -659,7 +669,7 @@
           <h3>User Prompt</h3>
           <pre class="prompt-preview-text" data-testid="prompt-preview-user">{{ preview.user }}</pre>
         </div>
-      </section>
+      </dialog>
     </div>
   }
 </div>

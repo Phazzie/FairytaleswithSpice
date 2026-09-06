@@ -846,6 +846,14 @@
   z-index: 100;
 }
 .prompt-preview-panel {
+  /* Overrides a `<dialog>` element's own UA-stylesheet defaults (absolute
+     positioning, its own border/padding/color/background) so it lays out and
+     looks exactly like the plain container it would otherwise be, inside the
+     flex-centered overlay above. */
+  position: relative;
+  margin: 0;
+  padding: 0;
+  color: inherit;
   background: #16213e;
   border: 1px solid #a855f74d;
   border-radius: 12px;
