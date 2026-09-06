@@ -48,6 +48,10 @@ async function main() {
   await testConfiguredExecutorFactoryBuildsProfileAndProjectStores();
   await testValidDatabaseUrlCreatesBundledNeonExecutor();
   await testInvalidDatabaseUrlFailsClosed();
+  await testDefaultModeIsPostgres();
+  await testNonDurableMemoryModeUsesInMemoryStores();
+  await testUnsupportedModeFailsClosed();
+  await testCloudStorageModeEnvDoesNotFallThroughToProcessEnv();
 
   console.log('Story Lab cloud storage config tests passed');
 }
@@ -172,6 +176,81 @@ async function testInvalidDatabaseUrlFailsClosed() {
   const projectResult = await storage.projectStore.listProjects(owner, wholeLibraryQuery);
   assert(!projectResult.success, 'project store without executor should fail closed');
   assert(projectResult.error.code === 'STORY_LAB_STORAGE_DRIVER_MISSING', 'project store should expose driver-missing error');
+}
+
+// Unlike `storyLabJobStoreConfig.ts`/`rateLimitStoreConfig.ts`, whose only
+// prior implementation was in-memory, this store's only prior implementation
+// was Postgres — so the default here stays `postgres`, preserving every test
+// above byte-for-byte, rather than matching the siblings' `non_durable_memory`
+// default and silently downgrading an existing `DATABASE_URL`-backed deployment.
+async function testDefaultModeIsPostgres() {
+  const storage = createStoryLabCloudStorage({ env: {}, now: () => now });
+
+  assert(storage.mode === 'postgres', 'default cloud storage mode should stay postgres');
+  assert(storage.requestedMode === 'postgres', 'default requested mode should be reported as postgres');
+}
+
+async function testNonDurableMemoryModeUsesInMemoryStores() {
+  let factoryCalls = 0;
+  const storage = createStoryLabCloudStorage({
+    env: { STORY_LAB_CLOUD_STORAGE: 'non_durable_memory' },
+    now: () => now,
+    createExecutor() {
+      factoryCalls += 1;
+      throw new Error('executor should not initialize in non_durable_memory mode');
+    }
+  });
+
+  assert(storage.mode === 'non_durable_memory', 'explicit opt-in should report non_durable_memory mode');
+  assert(!storage.databaseUrlConfigured, 'non_durable_memory mode should not require DATABASE_URL');
+  assert(!storage.executorConfigured, 'non_durable_memory mode should not create an executor');
+  assert(storage.isConfigured(), 'non_durable_memory mode should be immediately configured');
+  assert(factoryCalls === 0, 'executor factory should not run in non_durable_memory mode');
+
+  const profile = createDefaultStoryLabUserProfile(owner, { displayName: 'Riven', now });
+  const saveResult = await storage.profileStore.saveProfile(owner, profile);
+  assert(saveResult.success, 'non-durable profile store should accept saves');
+  const loadResult = await storage.profileStore.loadProfile(owner);
+  assert(loadResult.success && loadResult.data?.profile.displayName === 'Riven', 'non-durable profile store should round-trip in-process');
+
+  const project = createProject();
+  const projectSaveResult = await storage.projectStore.saveProject(owner, project);
+  assert(projectSaveResult.success, 'non-durable project store should accept saves');
+  const listResult = await storage.projectStore.listProjects(owner, wholeLibraryQuery);
+  assert(listResult.success && listResult.data.items[0]?.projectId === project.id, 'non-durable project store should round-trip in-process');
+}
+
+async function testUnsupportedModeFailsClosed() {
+  const storage = createStoryLabCloudStorage({
+    env: { STORY_LAB_CLOUD_STORAGE: 'planet-scale' },
+    now: () => now
+  });
+
+  assert(storage.mode === 'unsupported', 'an unrecognized mode value should report unsupported');
+  assert(storage.errorCode === 'STORY_LAB_CLOUD_STORAGE_UNSUPPORTED_MODE', 'unsupported mode should carry its error code');
+  assert(!storage.isConfigured(), 'unsupported mode should never report configured');
+
+  const profileResult = await storage.profileStore.loadProfile(owner);
+  assert(!profileResult.success, 'profile store should fail closed on an unsupported mode');
+
+  const projectResult = await storage.projectStore.listProjects(owner, wholeLibraryQuery);
+  assert(!projectResult.success, 'project store should fail closed on an unsupported mode');
+}
+
+async function testCloudStorageModeEnvDoesNotFallThroughToProcessEnv() {
+  const previousMode = process.env['STORY_LAB_CLOUD_STORAGE'];
+  process.env['STORY_LAB_CLOUD_STORAGE'] = 'non_durable_memory';
+
+  try {
+    const storage = createStoryLabCloudStorage({ env: {}, now: () => now });
+    assert(storage.mode === 'postgres', 'explicit empty env should not read process.env for the mode either');
+  } finally {
+    if (previousMode === undefined) {
+      delete process.env['STORY_LAB_CLOUD_STORAGE'];
+    } else {
+      process.env['STORY_LAB_CLOUD_STORAGE'] = previousMode;
+    }
+  }
 }
 
 function createProfileRow(profile: ReturnType<typeof createDefaultStoryLabUserProfile>) {

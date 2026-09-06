@@ -242,6 +242,8 @@ PR #102 merged this Phase C storage-port scaffold:
 - PR: `https://github.com/Phazzie/FairytaleswithSpice/pull/102`
 - Merge commit: `4d21e4f`
 
+PR #343 (2026-09-06) gave `createStoryLabCloudStorage` (`api/_lib/story-lab/storage/storyLabCloudStorageConfig.ts`) the env-driven mode switch this plan's non-durable in-memory adapter never got wired into a real caller for: `STORY_LAB_CLOUD_STORAGE=non_durable_memory` now selects the in-memory profile/project stores this plan built, and the default `postgres` mode is reported by `/api/health` when unconfigured instead of silently erroring per-request. See `PR70_RECOVERY_CHANGELOG.md`'s PR #343 entry for the full defect and rationale.
+
 Phase C must remain smaller than account sync:
 
 - no auth provider adapter;

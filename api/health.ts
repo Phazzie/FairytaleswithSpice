@@ -3,6 +3,7 @@ import { applyCorsPolicy } from './_lib/http/corsPolicy';
 import { sendMethodNotAllowed } from './_lib/http/methodNotAllowed';
 import { createRateLimitStoreConfig } from './_lib/middleware/rateLimitStoreConfig';
 import { createStoryLabJobStoreConfig } from './_lib/story-lab/jobs/storyLabJobStoreConfig';
+import { createStoryLabCloudStorage } from './_lib/story-lab/storage/storyLabCloudStorageConfig';
 import { createCriticalAlertSinkConfig } from './_lib/utils/criticalAlertSink';
 import { withUnhandledRouteFailureLogging } from './_lib/http/withUnhandledRouteFailureLogging';
 import { logError } from './_lib/utils/logger';
@@ -25,6 +26,7 @@ type HealthPayload = {
     grok: 'configured' | 'mock';
     rateLimitStore: DurableStoreHealth;
     storyLabJobStore: DurableStoreHealth;
+    storyLabCloudStorage: DurableStoreHealth;
     criticalAlerting: DurableStoreHealth;
   };
   cors: {
@@ -64,6 +66,7 @@ async function handler(req: any, res: any) {
   try {
     const rateLimitStoreConfig = createRateLimitStoreConfig();
     const storyLabJobStoreConfig = createStoryLabJobStoreConfig();
+    const storyLabCloudStorageConfig = createStoryLabCloudStorage();
     const rateLimitStore: DurableStoreHealth = {
       mode: rateLimitStoreConfig.mode,
       configured: rateLimitStoreConfig.isConfigured()
@@ -71,6 +74,10 @@ async function handler(req: any, res: any) {
     const storyLabJobStore: DurableStoreHealth = {
       mode: storyLabJobStoreConfig.mode,
       configured: storyLabJobStoreConfig.isConfigured()
+    };
+    const storyLabCloudStorage: DurableStoreHealth = {
+      mode: storyLabCloudStorageConfig.mode,
+      configured: storyLabCloudStorageConfig.isConfigured()
     };
     const criticalAlertSinkConfig = createCriticalAlertSinkConfig();
     const criticalAlerting: DurableStoreHealth = {
@@ -80,6 +87,7 @@ async function handler(req: any, res: any) {
     const degraded =
       isServiceDependencyDegraded(rateLimitStore)
       || isServiceDependencyDegraded(storyLabJobStore)
+      || isServiceDependencyDegraded(storyLabCloudStorage)
       || isServiceDependencyDegraded(criticalAlerting);
 
     const health: HealthPayload = {
@@ -91,6 +99,7 @@ async function handler(req: any, res: any) {
         grok: !!process.env['XAI_API_KEY'] ? 'configured' : 'mock',
         rateLimitStore,
         storyLabJobStore,
+        storyLabCloudStorage,
         criticalAlerting
       },
       cors: {
