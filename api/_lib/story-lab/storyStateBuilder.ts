@@ -228,6 +228,57 @@ export function buildStateDelta(
 }
 
 /**
+ * The five `StoryStateDelta` fields that describe what a batch actually
+ * changed, derived by diffing the state snapshot from *before* the batch
+ * against the one produced *after* AI continuity extraction has run.
+ *
+ * `buildStateDelta` above builds these same fields from each chapter's own
+ * `ChapterDelta` — which is what the real (Grok-backed) engine's
+ * `buildChapterDelta` reports before continuity extraction ever runs, and
+ * that function unconditionally reports no introduced characters, no
+ * resolved threads, no foreshadowed artifacts, and one hardcoded escalated
+ * thread id. `enrichContinuity` in `storyLabEngine.ts` then runs the real
+ * extraction and folds its findings into `payload.state`, but historically
+ * left `stateDelta` itself untouched apart from `continuityWarnings` — so
+ * the production response always claimed zero characters introduced, zero
+ * threads resolved, zero artifacts foreshadowed, regardless of what the
+ * batch's chapters or the extraction actually found.
+ *
+ * `mockData.ts`'s own `buildStateDelta` already computes `updatedCharacters`
+ * this way, by diffing `fromState` against `toState`; this generalizes that
+ * technique to all five fields so `enrichContinuity` can re-derive the whole
+ * delta from the states it already has, after extraction has run.
+ */
+export function deriveContinuityDelta(
+  fromState: StoryStateSnapshot | null,
+  toState: StoryStateSnapshot
+): Pick<
+  StoryStateDelta,
+  'introducedCharacters' | 'updatedCharacters' | 'resolvedThreads' | 'escalatedThreads' | 'foreshadowedArtifacts'
+> {
+  const previousCharactersById = new Map((fromState?.characters ?? []).map(character => [character.id, character]));
+  const previousThreadsById = new Map((fromState?.threads ?? []).map(thread => [thread.id, thread]));
+  const previousArtifactIds = new Set((fromState?.artifacts ?? []).map(artifact => artifact.id));
+
+  const introducedCharacters = toState.characters.filter(character => !previousCharactersById.has(character.id));
+  const updatedCharacters = toState.characters.filter(character => {
+    const previous = previousCharactersById.get(character.id);
+    return previous ? JSON.stringify(previous) !== JSON.stringify(character) : false;
+  });
+
+  const resolvedThreads = toState.threads
+    .filter(thread => thread.status === 'resolved' && previousThreadsById.get(thread.id)?.status !== 'resolved')
+    .map(thread => thread.id);
+  const escalatedThreads = toState.threads.filter(thread =>
+    thread.status === 'escalating' && previousThreadsById.get(thread.id)?.status !== 'escalating'
+  );
+
+  const foreshadowedArtifacts = toState.artifacts.filter(artifact => !previousArtifactIds.has(artifact.id));
+
+  return { introducedCharacters, updatedCharacters, resolvedThreads, escalatedThreads, foreshadowedArtifacts };
+}
+
+/**
  * `buildStateDelta` (below) already reports `resolvedThreads` straight from
  * each chapter's own delta — this is where that same signal needs to land in
  * the persisted snapshot, so a thread the delta calls resolved doesn't keep
