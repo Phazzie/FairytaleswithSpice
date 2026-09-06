@@ -107,7 +107,7 @@ Relevant issues:
 - #153: unresolved legacy PR review threads.
 - #138: quality heuristics refactor.
 - #135: idempotency-key retries in Postgres job creation.
-- #132: historical Dependabot #120/#121 Vercel preview triage; current dependency follow-up is #194.
+- #132: historical Dependabot #120/#121 Vercel preview triage; #194 was the follow-up after that but closed unmerged on 2026-08-28 — current dependency follow-up is #322/#327 (see Progress and Slice 4 above).
 - #131: job store config memoization.
 - #130: recovery preflight network-dependent Node 20 wrappers.
 - #129: stable UI-slice validation hooks.
