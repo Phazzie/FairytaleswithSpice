@@ -17,11 +17,15 @@
 import {
   buildChapterDelta,
   buildStateDelta,
-  buildStateSnapshot
+  buildStateSnapshot,
+  deriveContinuityDelta
 } from '../api/_lib/story-lab/storyStateBuilder';
+import { mergeAiContinuity } from '../api/_lib/story-lab/continuityExtractor';
 import type {
+  CharacterProfile,
   ChapterDelta,
   GeneratedChapter,
+  LoreArtifact,
   StoryGenerationSeam,
   StoryStateSnapshot
 } from '../api/_lib/story-lab/contracts';
@@ -305,6 +309,139 @@ function testStateDeltaRevisionAndEscalatedThreads(): void {
   );
 }
 
+function testCharacter(id: string, overrides: Partial<CharacterProfile> = {}): CharacterProfile {
+  return {
+    id,
+    displayName: id,
+    archetype: 'supporting',
+    summary: 'A character.',
+    currentGoal: 'Survive the story.',
+    internalConflict: 'Doubt.',
+    externalConflict: 'The plot.',
+    secrets: [],
+    relationships: [],
+    spiceCompatibilities: [3],
+    ...overrides
+  };
+}
+
+function testArtifact(id: string, overrides: Partial<LoreArtifact> = {}): LoreArtifact {
+  return {
+    id,
+    name: id,
+    significance: 'An artifact.',
+    ...overrides
+  };
+}
+
+/**
+ * On genesis (`fromState` null) every character and artifact the resulting
+ * state carries is, by definition, newly introduced — there is no prior
+ * snapshot for anything to have already been in.
+ */
+function testDeriveContinuityDeltaOnGenesisTreatsEverythingAsIntroduced(): void {
+  const toState = baseState({
+    characters: [testCharacter('character-mira'), testCharacter('character-corvin')],
+    artifacts: [testArtifact('artifact-locket')],
+    threads: [
+      { id: 'thread-1', label: 'Central romance', status: 'active', description: '...', foreshadowedDevices: [] }
+    ]
+  });
+
+  const delta = deriveContinuityDelta(null, toState);
+
+  assert(delta.introducedCharacters.length === 2, `expected both genesis characters introduced, got ${delta.introducedCharacters.length}`);
+  assert(delta.updatedCharacters.length === 0, 'expected no updated characters with no prior state to diff against');
+  assert(delta.foreshadowedArtifacts.length === 1, `expected the genesis artifact foreshadowed, got ${delta.foreshadowedArtifacts.length}`);
+  assert(delta.resolvedThreads.length === 0, 'expected no resolved threads when nothing starts resolved');
+  assert(delta.escalatedThreads.length === 0, 'expected no escalated threads when nothing starts escalating');
+}
+
+/**
+ * The gap this closes: a real batch that introduces a character, edits an
+ * existing one, resolves one thread, escalates another (leaving an
+ * already-escalating thread uncounted a second time), and foreshadows a new
+ * artifact must show up as exactly that in the delta — not the placeholder
+ * empty/hardcoded values `buildChapterDelta` reports before extraction runs.
+ */
+function testDeriveContinuityDeltaOnContinuationIdentifiesWhatChanged(): void {
+  const fromState = baseState({
+    characters: [testCharacter('character-mira'), testCharacter('character-corvin', { summary: 'Before.' })],
+    artifacts: [testArtifact('artifact-locket')],
+    threads: [
+      { id: 'thread-debt', label: 'The debt', status: 'active', description: 'd', foreshadowedDevices: [] },
+      { id: 'thread-oath', label: 'The oath', status: 'escalating', description: 'o', foreshadowedDevices: [] },
+      { id: 'thread-truce', label: 'The truce', status: 'active', description: 't', foreshadowedDevices: [] }
+    ]
+  });
+  const toState = baseState({
+    characters: [
+      testCharacter('character-mira'),
+      testCharacter('character-corvin', { summary: 'After.' }),
+      testCharacter('character-sable')
+    ],
+    artifacts: [testArtifact('artifact-locket'), testArtifact('artifact-blade')],
+    threads: [
+      { id: 'thread-debt', label: 'The debt', status: 'resolved', description: 'd', foreshadowedDevices: [] },
+      { id: 'thread-oath', label: 'The oath', status: 'escalating', description: 'o', foreshadowedDevices: [] },
+      { id: 'thread-truce', label: 'The truce', status: 'escalating', description: 't', foreshadowedDevices: [] }
+    ]
+  });
+
+  const delta = deriveContinuityDelta(fromState, toState);
+
+  assert(
+    delta.introducedCharacters.length === 1 && delta.introducedCharacters[0]?.id === 'character-sable',
+    `expected only the new character introduced, got ${JSON.stringify(delta.introducedCharacters.map(c => c.id))}`
+  );
+  assert(
+    delta.updatedCharacters.length === 1 && delta.updatedCharacters[0]?.id === 'character-corvin',
+    `expected only the edited character reported as updated, got ${JSON.stringify(delta.updatedCharacters.map(c => c.id))}`
+  );
+  assert(
+    delta.resolvedThreads.length === 1 && delta.resolvedThreads[0] === 'thread-debt',
+    `expected only the newly resolved thread, got ${JSON.stringify(delta.resolvedThreads)}`
+  );
+  assert(
+    delta.escalatedThreads.length === 1 && delta.escalatedThreads[0]?.id === 'thread-truce',
+    `expected only the newly escalating thread — an already-escalating one must not be reported again, got ${JSON.stringify(delta.escalatedThreads.map(t => t.id))}`
+  );
+  assert(
+    delta.foreshadowedArtifacts.length === 1 && delta.foreshadowedArtifacts[0]?.id === 'artifact-blade',
+    `expected only the new artifact foreshadowed, got ${JSON.stringify(delta.foreshadowedArtifacts.map(a => a.id))}`
+  );
+}
+
+/**
+ * Chains the already-tested `mergeAiContinuity` (the real extraction merge)
+ * into a `toState`, then asserts `deriveContinuityDelta` against it — proving
+ * the two agree on what an AI continuity answer actually changed, the same
+ * seam `enrichContinuity` wires them together at in `storyLabEngine.ts`.
+ */
+function testDeriveContinuityDeltaAgreesWithMergeAiContinuity(): void {
+  const fromState = baseState({
+    threads: [
+      { id: 'thread-binding-debt', label: 'The binding debt', status: 'active', description: 'd', foreshadowedDevices: [], lifetime: 'series' }
+    ]
+  });
+
+  const toState = mergeAiContinuity(fromState, {
+    characters: [{ displayName: 'Sable' }],
+    threads: [{ id: 'thread-binding-debt', label: 'The binding debt', status: 'resolved', description: 'Paid in full.' }]
+  }, NOW);
+
+  const delta = deriveContinuityDelta(fromState, toState);
+
+  assert(
+    delta.introducedCharacters.some(character => character.displayName === 'Sable'),
+    `expected the AI-extracted character to be reported introduced, got ${JSON.stringify(delta.introducedCharacters)}`
+  );
+  assert(
+    delta.resolvedThreads.includes('thread-binding-debt'),
+    `expected the AI-resolved thread to be reported resolved, got ${JSON.stringify(delta.resolvedThreads)}`
+  );
+}
+
 function main(): void {
   testGenesisBuildsInitialCharactersAndThreads();
   testGenesisFallsBackWithoutAntagonistOrThemes();
@@ -314,6 +451,9 @@ function main(): void {
   testResolutionTakesPriorityOverEscalationForTheSameThread();
   testChapterDeltaFlagsOnlyAtBatchBoundary();
   testStateDeltaRevisionAndEscalatedThreads();
+  testDeriveContinuityDeltaOnGenesisTreatsEverythingAsIntroduced();
+  testDeriveContinuityDeltaOnContinuationIdentifiesWhatChanged();
+  testDeriveContinuityDeltaAgreesWithMergeAiContinuity();
 
   console.log('Story Lab state builder tests passed');
 }

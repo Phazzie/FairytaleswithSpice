@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ***WORST TO BEST*** Story Lab's real-engine `StoryStateDelta` (`storyStateBuilder.ts`, `storyLabEngine.ts`) — the per-batch "what changed" payload that always claimed nothing changed (September 6, 2026)
+
+- `stateDelta` is the field of every Story Lab genesis/continuation response that tells the caller
+  what a batch actually did to the story: which characters were introduced or updated, which
+  threads resolved or escalated, which artifacts were foreshadowed. On the real (Grok-backed)
+  engine it was frozen at empty/placeholder values forever — `buildChapterDelta` unconditionally
+  returns `introducedCharacters: []`, `resolvedThreads: []`, `foreshadowedArtifacts: []`, and one
+  hardcoded `escalatedThreads` id, and `enrichContinuity` only ever copied `continuityWarnings`
+  back out of the real AI continuity extraction, leaving the other five fields exactly as
+  `buildChapterDelta` had guessed them before extraction ran.
+- The tell: `mockData.ts`'s own `buildStateDelta` (the offline/no-API-key demo path) diffs
+  `fromState` against `toState` to compute `updatedCharacters` correctly — so the free demo mode
+  honestly reported state changes while the paid production engine's response always claimed zero
+  characters introduced, zero threads resolved, zero artifacts foreshadowed, regardless of what
+  happened. Untested: every existing test of `generateStoryLabGenesis`/`continueStoryLab` passes a
+  `serviceFactory` stub, which forces `enrichContinuity`'s AI branch off, so this gap was invisible
+  to the suite.
+- Added `deriveContinuityDelta(fromState, toState)` to `storyStateBuilder.ts`, generalizing
+  `mockData.ts`'s one correct diff to all five fields: characters/artifacts present in `toState`
+  but not `fromState` are introduced/foreshadowed; a character present in both whose serialized
+  form differs is updated; a thread whose status newly became `resolved`/`escalating` (and wasn't
+  already) is reported resolved/escalating.
+- Wired it into `enrichContinuity`: both call sites (`generateStoryLabGenesis` passing `null`,
+  `continueStoryLab` passing the request's `storyState`) now hand it the pre-batch snapshot, and
+  `stateDelta` is rebuilt from `deriveContinuityDelta(previousState, extraction.state)` — the state
+  *after* AI continuity extraction has run — instead of staying frozen at the placeholder values.
+  A genesis batch's blueprint-seeded protagonist/antagonist now correctly appears in
+  `introducedCharacters` too, instead of never being reported at all.
+- Added unit tests to `tests/story-lab-state-builder.test.ts`: genesis (`fromState` null) reporting
+  everything as introduced, a continuation identifying exactly what changed (including an
+  already-escalating thread not being reported a second time), and a test chaining the
+  already-tested `mergeAiContinuity` into a `toState` to prove the merge and the delta agree.
+
+#### Validation
+
+- `npm run test:all` exits `0` across every registered suite, including the three new
+  `story-lab-state-builder` cases.
+
 ### 🐛 The export tokenizer ended a tag at the first `>` rather than at the tag's own (August 28, 2026)
 
 - A tag does not end at the first `>` — it ends at the first `>` that is not inside
