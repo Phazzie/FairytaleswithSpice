@@ -1892,13 +1892,17 @@ export class App implements OnDestroy {
    * "Account connected" toast — there was no way to reach the profile it
    * named. Every other sync mode keeps the existing connect/status flow.
    */
-  handleCloudAccountAction(): Promise<void> {
+  handleCloudAccountAction(): void {
     if (this.cloudLibrarySyncState().mode === 'cloud_synced') {
       this.openStoryLabProfile();
-      return Promise.resolve();
+      return;
     }
 
-    return this.showCloudAccountSetupStatus();
+    // Fire-and-forget, same as this template binding's previous target
+    // (`showCloudAccountSetupStatus()`) always was — `void` marks that
+    // intentional rather than leaving an unhandled promise from a template
+    // event binding, which is never awaited either way.
+    void this.showCloudAccountSetupStatus();
   }
 
   openStoryLabProfile(): void {
