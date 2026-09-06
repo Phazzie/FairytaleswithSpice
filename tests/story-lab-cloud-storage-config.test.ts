@@ -3,6 +3,8 @@
 
 import type { AuthUser } from '../api/_lib/story-lab/auth/authPort';
 import { createDefaultStoryLabUserProfile } from '../api/_lib/story-lab/profile/storyLabProfileStore';
+import { createNonDurableInMemoryStoryLabProfileStore } from '../api/_lib/story-lab/profile/inMemoryStoryLabProfileStore';
+import { createNonDurableInMemoryStoryProjectStore } from '../api/_lib/story-lab/storage/inMemoryStoryProjectStore';
 import { createStoryLabCloudStorage } from '../api/_lib/story-lab/storage/storyLabCloudStorageConfig';
 import type { SavedStoryProject } from '../story-generator/src/app/contracts';
 
@@ -51,6 +53,7 @@ async function main() {
   await testDefaultModeIsPostgres();
   await testNonDurableMemoryModeUsesInMemoryStores();
   await testNonDurableMemorySharesStoreAcrossSeparateCalls();
+  await testAccountHandlerShapedCallStillSharesTheSingleton();
   await testUnsupportedModeFailsClosed();
   await testCloudStorageModeEnvDoesNotFallThroughToProcessEnv();
 
@@ -191,11 +194,21 @@ async function testDefaultModeIsPostgres() {
   assert(storage.requestedMode === 'postgres', 'default requested mode should be reported as postgres');
 }
 
+// `createStoryLabCloudStorage`'s `non_durable_memory` branch deliberately
+// ignores `options.now` for its default stores (see that file's own comment):
+// `createStoryLabAccountRouteHandler()` always constructs and passes a `now`
+// closure, even when its own caller supplied none, so branching on whether
+// `now` was given would silently take the account route off the shared
+// singleton every other route uses. A test that wants a controlled clock for
+// this mode has to ask for it explicitly via `nonDurableProfileStore`/
+// `nonDurableProjectStore` instead — exactly like a caller who genuinely
+// wants an isolated store, not the shared production one.
 async function testNonDurableMemoryModeUsesInMemoryStores() {
   let factoryCalls = 0;
   const storage = createStoryLabCloudStorage({
     env: { STORY_LAB_CLOUD_STORAGE: 'non_durable_memory' },
-    now: () => now,
+    nonDurableProfileStore: createNonDurableInMemoryStoryLabProfileStore({ now: () => now }),
+    nonDurableProjectStore: createNonDurableInMemoryStoryProjectStore({ now: () => now }),
     createExecutor() {
       factoryCalls += 1;
       throw new Error('executor should not initialize in non_durable_memory mode');
@@ -213,7 +226,7 @@ async function testNonDurableMemoryModeUsesInMemoryStores() {
   assert(saveResult.success, 'non-durable profile store should accept saves');
   const loadResult = await storage.profileStore.loadProfile(owner);
   assert(loadResult.success && loadResult.data?.profile.displayName === 'Riven', 'non-durable profile store should round-trip in-process');
-  assert(loadResult.data?.createdAt === now, 'non-durable profile store should honor an injected clock, not the real one');
+  assert(loadResult.data?.createdAt === now, 'an explicit store override should honor its own injected clock');
 
   const project = createProject();
   const projectSaveResult = await storage.projectStore.saveProject(owner, project);
@@ -222,13 +235,9 @@ async function testNonDurableMemoryModeUsesInMemoryStores() {
   assert(listResult.success && listResult.data.items[0]?.projectId === project.id, 'non-durable project store should round-trip in-process');
 }
 
-// The above test passes an explicit `now`, so it exercises the per-call
-// isolated store, not the shared module-level singleton every real route
-// handler actually uses (none of them override the clock). This test
-// exercises that singleton directly: two independent
-// `createStoryLabCloudStorage()` calls, exactly like two different route
-// handlers each calling it once, must see the same records — a profile
-// saved through one has to be visible through the other.
+// Two independent `createStoryLabCloudStorage()` calls, exactly like two
+// different route handlers each calling it once, must see the same records —
+// a profile saved through one has to be visible through the other.
 async function testNonDurableMemorySharesStoreAcrossSeparateCalls() {
   const firstCallStorage = createStoryLabCloudStorage({ env: { STORY_LAB_CLOUD_STORAGE: 'non_durable_memory' } });
   const secondCallStorage = createStoryLabCloudStorage({ env: { STORY_LAB_CLOUD_STORAGE: 'non_durable_memory' } });
@@ -241,6 +250,35 @@ async function testNonDurableMemorySharesStoreAcrossSeparateCalls() {
   assert(
     loadResult.success && loadResult.data?.profile.displayName === 'Marnie',
     'a second, independent createStoryLabCloudStorage() call should see the first call\'s save'
+  );
+}
+
+// The regression this specifically guards against: `createStoryLabAccountRouteHandler()`
+// (`accountRouteHandlers.ts`) always builds its own `now` closure and passes
+// it — `createStoryLabCloudStorage({ now })` — even when its own caller
+// supplied none, unlike every other route (`jobRouteHandlers.ts`, `stories.ts`,
+// `continue.ts`), which call it bare. If the `non_durable_memory` branch ever
+// keyed sharing off "was `now` provided," the account route alone would fall
+// off the shared singleton: a profile saved through
+// `/api/story-lab/account/profile` would load as `null` from every
+// generation route in the same process, silently dropping its content
+// boundaries. This test reproduces the account handler's exact call shape
+// and proves it still shares state with a bare call.
+async function testAccountHandlerShapedCallStillSharesTheSingleton() {
+  const accountHandlerShapedStorage = createStoryLabCloudStorage({
+    env: { STORY_LAB_CLOUD_STORAGE: 'non_durable_memory' },
+    now: () => new Date().toISOString()
+  });
+  const bareGenerationRouteStorage = createStoryLabCloudStorage({ env: { STORY_LAB_CLOUD_STORAGE: 'non_durable_memory' } });
+
+  const profile = createDefaultStoryLabUserProfile(owner, { displayName: 'Sable' });
+  const saveResult = await accountHandlerShapedStorage.profileStore.saveProfile(owner, profile);
+  assert(saveResult.success, 'the account-handler-shaped call\'s profile store should accept the save');
+
+  const loadResult = await bareGenerationRouteStorage.profileStore.loadProfile(owner);
+  assert(
+    loadResult.success && loadResult.data?.profile.displayName === 'Sable',
+    'a bare createStoryLabCloudStorage() call, as generation routes make, should see the account route\'s save'
   );
 }
 
