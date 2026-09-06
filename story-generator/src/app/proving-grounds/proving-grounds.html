@@ -600,13 +600,16 @@
     a no-op during SSR — a panel bound to a signal has none of those limits.
   -->
   @if (promptPreview(); as preview) {
-    <div class="prompt-preview-overlay" (click)="closePromptPreview()">
-      <div
+    <div
+      class="prompt-preview-overlay"
+      (click)="closePromptPreview()"
+      (keydown.escape)="closePromptPreview()">
+      <dialog
+        open
         class="prompt-preview-panel"
-        role="dialog"
-        aria-modal="true"
         [attr.aria-label]="preview.templateName + ' filled prompts'"
-        (click)="$event.stopPropagation()">
+        (click)="$event.stopPropagation()"
+        (keydown.escape)="closePromptPreview()">
         <div class="prompt-preview-header">
           <h2>{{ preview.templateName }} — Filled Prompts</h2>
           <button
@@ -623,7 +626,7 @@
           <h3>User Prompt</h3>
           <pre class="prompt-preview-text" data-testid="prompt-preview-user">{{ preview.user }}</pre>
         </div>
-      </div>
+      </dialog>
     </div>
   }
 </div>

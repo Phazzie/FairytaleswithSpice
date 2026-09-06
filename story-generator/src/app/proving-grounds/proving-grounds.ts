@@ -1,6 +1,6 @@
 // Created: 2025-10-31 06:28
 import { CommonModule, isPlatformBrowser } from '@angular/common';
-import { Component, OnInit, PLATFORM_ID, SecurityContext, inject, signal } from '@angular/core';
+import { Component, HostListener, OnInit, PLATFORM_ID, SecurityContext, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer } from '@angular/platform-browser';
 import { RouterLink } from '@angular/router';
@@ -297,6 +297,19 @@ export class ProvingGroundsComponent implements OnInit {
     }
 
     this.promptPreview.set({ templateName: template.name, system: prompts.system, user: prompts.user });
+  }
+
+  /**
+   * Escape closes the preview from anywhere on the page, not only when the
+   * overlay itself happens to have focus — opening the panel doesn't move
+   * focus into it, so a listener scoped to one of its own elements would miss
+   * the common case of pressing Escape right after the click that opened it.
+   */
+  @HostListener('document:keydown.escape')
+  onEscapeKey(): void {
+    if (this.promptPreview()) {
+      this.closePromptPreview();
+    }
   }
 
   closePromptPreview(): void {

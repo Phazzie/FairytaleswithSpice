@@ -846,6 +846,14 @@
   z-index: 100;
 }
 .prompt-preview-panel {
+  /* Overrides the `<dialog>` element's own UA-stylesheet defaults (absolute
+     positioning, a border/padding/color/background of its own) so it lays
+     out and looks exactly like the `<div>` it replaced, inside the flex-
+     centered overlay above. */
+  position: relative;
+  margin: 0;
+  padding: 0;
+  color: inherit;
   background: #16213e;
   border: 1px solid #a855f74d;
   border-radius: 12px;
@@ -886,7 +894,7 @@
   font-size: 0.85rem;
   line-height: 1.5;
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: anywhere;
   color: #e0e0e0;
 }
 .prompt-preview-text:last-child {
