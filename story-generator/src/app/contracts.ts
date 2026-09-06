@@ -972,6 +972,15 @@ export interface ProvingGroundsTestResult {
   generationTime: number;
   chapterCount: number;
   totalWordCount: number;
+  /**
+   * Whether `generatedStory` came from `GenerationTelemetry.engine === 'custom'`
+   * — the server's canned mock chapters, returned when no model provider is
+   * configured, which ignore the prompt under test entirely. A page whose
+   * whole purpose is comparing prompts has to say so wherever this result is
+   * shown, the same way `aiEvaluation.isMockEvaluation` already does for a
+   * placeholder score.
+   */
+  isMockGeneration: boolean;
   aiEvaluation?: EvaluationCriteria;
 }
 

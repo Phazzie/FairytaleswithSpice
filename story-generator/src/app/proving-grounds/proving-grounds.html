@@ -141,7 +141,8 @@
             class="btn btn-primary btn-large"
             data-testid="generate-story"
             (click)="generateStory()"
-            [disabled]="isGenerating() || selectedThemes.length === 0 || !!narrativeDirectivesOverflowMessage()">
+            [disabled]="isGenerating() || selectedThemes.length === 0 || !!narrativeDirectivesOverflowMessage()"
+            [attr.aria-describedby]="narrativeDirectivesOverflowMessage() ? 'narrative-directives-overflow-message' : null">
             @if (isGenerating()) {
               <span class="spinner">⏳</span> Generating...
             } @else {
@@ -150,7 +151,11 @@
           </button>
 
           @if (narrativeDirectivesOverflowMessage(); as overflow) {
-            <p class="narrative-directives-warning" data-testid="narrative-directives-overflow">
+            <p
+              id="narrative-directives-overflow-message"
+              class="narrative-directives-warning"
+              data-testid="narrative-directives-overflow"
+              role="alert">
               ⚠️ {{ overflow }}
               <span class="narrative-directives-warning-detail">Choose a shorter template or trim the custom prompt.</span>
             </p>
@@ -256,7 +261,8 @@
                 [(ngModel)]="customSystemPrompt"
                 class="form-control code-editor"
                 rows="10"
-                placeholder="Enter custom system prompt..."></textarea>
+                placeholder="Enter custom system prompt..."
+                [attr.aria-describedby]="narrativeDirectivesOverflowMessage() ? 'narrative-directives-overflow-message' : null"></textarea>
             </div>
             <div class="form-group">
               <label for="pg-user-prompt">User Prompt Template</label>
@@ -265,7 +271,8 @@
                 [(ngModel)]="customUserPrompt"
                 class="form-control code-editor"
                 rows="6"
-                placeholder="Enter custom user prompt template..."></textarea>
+                placeholder="Enter custom user prompt template..."
+                [attr.aria-describedby]="narrativeDirectivesOverflowMessage() ? 'narrative-directives-overflow-message' : null"></textarea>
             </div>
             <p class="hint">💡 Edit prompts to test variations and improvements</p>
           </div>
@@ -290,6 +297,12 @@
                   <h3>Test #{{ testHistory().indexOf(test) + 1 }}</h3>
                   <span class="timestamp">{{ test.timestamp | date:'short' }}</span>
                 </div>
+
+                @if (test.isMockGeneration) {
+                  <p class="mock-evaluation-notice" data-testid="mock-generation-badge">
+                    ⚠️ Offline mock chapters — not real AI output. Do not use this result for prompt comparisons.
+                  </p>
+                }
 
                 <div class="comparison-config">
                   <p><strong>Template:</strong> {{ test.configuration.promptTemplate.name }}</p>
@@ -357,6 +370,12 @@
               </button>
             </div>
           </div>
+
+          @if (currentTest()!.isMockGeneration) {
+            <p class="mock-evaluation-notice" data-testid="mock-generation-badge">
+              ⚠️ Offline mock chapters — not real AI output. Do not use this result for prompt comparisons.
+            </p>
+          }
 
           <!-- AI Evaluation Results -->
           @if (currentTest()!.aiEvaluation) {
@@ -526,6 +545,15 @@
                 <div class="history-item-header">
                   <span class="test-number">#{{ $index + 1 }}</span>
                   <span class="timestamp">{{ test.timestamp | date:'short' }}</span>
+
+                  @if (test.isMockGeneration) {
+                    <span
+                      class="score-badge mini score-low"
+                      data-testid="mock-generation-badge"
+                      title="Offline mock chapters — not real AI output, not comparable to a real run">
+                      🎭 mock
+                    </span>
+                  }
 
                   @if (test.aiEvaluation) {
                     <span

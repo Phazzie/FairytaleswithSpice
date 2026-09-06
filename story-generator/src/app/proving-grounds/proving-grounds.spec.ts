@@ -11,10 +11,11 @@ import {
   WORD_BUDGETS
 } from '../contracts';
 import { ProvingGroundsComponent } from './proving-grounds';
+import { ErrorLoggingService } from '../error-logging';
 import { STORY_BLUEPRINT_LIMITS } from '../../../../shared/storyBlueprintLimits';
 import { STORY_LAB_THEME_SEEDS } from '../../../../shared/storyLabThemeSeeds';
 
-function createStoryIterationPayload(): StoryIterationPayload {
+function createStoryIterationPayload(engine: 'gpt' | 'grok' | 'custom' = 'gpt'): StoryIterationPayload {
   const now = new Date().toISOString();
   return {
     summary: {
@@ -61,7 +62,7 @@ function createStoryIterationPayload(): StoryIterationPayload {
       lastUpdatedAt: now
     },
     telemetry: {
-      engine: 'gpt',
+      engine,
       totalLatencyMs: 2000,
       averageChapterLatencyMs: 2000,
       tokensConsumed: 1200,
@@ -97,6 +98,7 @@ function createEvaluatedResult(): ProvingGroundsTestResult {
     generationTime: 1200,
     chapterCount: 1,
     totalWordCount: 900,
+    isMockGeneration: false,
     aiEvaluation: {
       score: 82,
       strengths: ['Strong hook.'],
@@ -471,6 +473,61 @@ describe('ProvingGroundsComponent', () => {
     expect(req.request.body.narrativeDirectives).toBe(`${prompts.system}\n\n${prompts.user}`);
     expect(req.request.body.narrativeDirectives).not.toContain('PROVING GROUNDS TEST');
     req.flush({ success: true, data: createStoryIterationPayload() });
+  });
+
+  // `buildGenesisResponse()`'s canned mock chapters (served when no model
+  // provider is configured) ignore whatever prompt was under test — Codex's
+  // review caught that a mock result was stored and comparable exactly like
+  // a real one, with nothing marking it as such.
+  it('marks a result generated from mock chapters instead of comparing it as a real run', () => {
+    component.generateStory();
+
+    const req = httpMock.expectOne('/api/story-lab/stories');
+    req.flush({ success: true, data: createStoryIterationPayload('custom') });
+
+    const stored = component.currentTest();
+    expect(stored!.isMockGeneration).toBeTrue();
+    expect(component.statusMessage.toLowerCase()).toContain('mock');
+
+    fixture.detectChanges();
+    expect(getByTestId(fixture, 'mock-generation-badge')).withContext(
+      'the current-test view should flag a mock generation'
+    ).toBeTruthy();
+  });
+
+  it('does not mark a real generation as mock', () => {
+    component.generateStory();
+
+    const req = httpMock.expectOne('/api/story-lab/stories');
+    req.flush({ success: true, data: createStoryIterationPayload('gpt') });
+
+    expect(component.currentTest()!.isMockGeneration).toBeFalse();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid="mock-generation-badge"]')).toBeNull();
+  });
+
+  // `StoryService.beginStory()` already logs an HTTP failure through
+  // `ErrorLoggingService` (`handleHttpError`) before rethrowing it — Codex's
+  // review caught that this component's own error handler logged the same
+  // error a second time, doubling every failed generation in the Debug
+  // Errors panel.
+  it('does not log a failed generation a second time on top of StoryService\'s own logging', () => {
+    const errorLogging = TestBed.inject(ErrorLoggingService);
+    spyOn(errorLogging, 'logError').and.callThrough();
+
+    component.generateStory();
+
+    const req = httpMock.expectOne('/api/story-lab/stories');
+    req.flush({ success: false, error: { code: 'GENERATION_FAILED', message: 'boom' } }, { status: 500, statusText: 'Server Error' });
+
+    // `logInfo` is itself a thin wrapper around `logError` (severity
+    // 'info') — `StoryService.beginStory()` calls that once just to record
+    // the request starting, unrelated to this failure. What must not
+    // double is the *error*-severity call `handleHttpError` makes.
+    const errorSeverityCalls = (errorLogging.logError as jasmine.Spy).calls.all()
+      .filter(call => (call.args[2] ?? 'error') === 'error');
+    expect(errorSeverityCalls.length).toBe(1);
+    expect(errorSeverityCalls[0].args[1]).toBe('StoryService.beginStory');
   });
 
   // Editing the "Current Production" template's own text is what turns it from

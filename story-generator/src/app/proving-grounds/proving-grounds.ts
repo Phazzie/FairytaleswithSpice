@@ -458,11 +458,16 @@ export class ProvingGroundsComponent implements OnInit {
         const testResult = this.createTestResult(result.data, template, prompts, directives, Date.now() - startTime);
         this.currentTest.set(testResult);
         this.addToHistory(testResult);
-        this.statusMessage = `Generated ${testResult.chapterCount} chapter${testResult.chapterCount === 1 ? '' : 's'} for comparison.`;
+        this.statusMessage = testResult.isMockGeneration
+          ? 'Generated with offline mock chapters — not real AI output. Do not use this result for prompt comparisons.'
+          : `Generated ${testResult.chapterCount} chapter${testResult.chapterCount === 1 ? '' : 's'} for comparison.`;
         this.isGenerating.set(false);
       },
       error: error => {
-        this.errorLogging.logError(error, 'ProvingGroundsComponent.generateStory');
+        // `StoryService.beginStory()` already logs this through
+        // `ErrorLoggingService` (`handleHttpError`) before rethrowing it —
+        // logging it again here would double every failed generation in the
+        // Debug Errors panel.
         this.statusMessage = this.readApiErrorMessage(error)
           ?? 'Story generation failed. Check the debug panel or console for details.';
         this.isGenerating.set(false);
@@ -747,7 +752,13 @@ export class ProvingGroundsComponent implements OnInit {
       generatedStory: this.renderChapters(chapters),
       generationTime,
       chapterCount: chapters.length,
-      totalWordCount: payload.batch.totalWordCount
+      totalWordCount: payload.batch.totalWordCount,
+      // 'custom' is `buildGenesisResponse`'s canned mock chapters, served
+      // when no model provider is configured — fixed prose that ignores
+      // whatever prompt was actually under test. Comparing that against a
+      // real run's output would be comparing two different things while
+      // this page claims to be comparing one.
+      isMockGeneration: payload.telemetry.engine === 'custom'
     };
   }
 
