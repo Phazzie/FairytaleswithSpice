@@ -4,7 +4,7 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
-## 2026-09-06 UTC - Story Lab cloud storage had no non-durable fallback and was invisible to `/api/health` (PR #343)
+## 2026-09-06 UTC - Story Lab cloud storage had no non-durable fallback and was invisible to `/api/health` (PR #344)
 
 `createStoryLabCloudStorage` (`api/_lib/story-lab/storage/storyLabCloudStorageConfig.ts`) unconditionally built Postgres-backed profile/project stores with no mode switch at all — unlike its two siblings, `storyLabJobStoreConfig.ts` (`STORY_LAB_JOB_STORE`) and `rateLimitStoreConfig.ts` (`RATE_LIMIT_STORE`), both of which switch between a non-durable default and an opt-in Postgres mode via the shared `durableStoreEnvResolution.ts` helper. Two complete, tested non-durable implementations already existed — `createNonDurableInMemoryStoryLabProfileStore` and `createNonDurableInMemoryStoryProjectStore` — referenced only by their own spec files, dead in production. Any deployment without a reachable `DATABASE_URL` got a hard `STORY_LAB_STORAGE_UNCONFIGURED`/`STORY_LAB_PROFILE_STORAGE_UNCONFIGURED` error on every profile/project call — including the Profile Preferences panel just shipped in #342 — and `/api/health` (rewritten in #338 specifically to catch this class of gap) had no entry for this store at all, so a Postgres-misconfigured deployment reported fully `healthy` while the whole cloud-account/library feature was dead.
 
