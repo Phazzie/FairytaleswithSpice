@@ -87,13 +87,14 @@ NODE_ENV=development
 
 # Optional: Story Lab cloud storage (signed-in profile + project library).
 # Defaults to `postgres` (requires DATABASE_URL) since that has always been
-# this store's only implementation. Set to `non_durable_memory` to run
-# signed-in save/load without a database — profiles/projects then live only
-# in this process's memory and are lost on restart/redeploy, and are not
-# shared across separate Vercel function invocations. An unset DATABASE_URL
-# with the default `postgres` mode degrades `/api/health` (503) rather than
-# silently erroring on every profile/project request — see the Health Check
-# section.
+# this store's only implementation; an unset DATABASE_URL degrades
+# `/api/health` (503) rather than silently erroring on every profile/project
+# request. `non_durable_memory` is a local/test convenience only, not a
+# supported production fallback: it keeps the backend from hard-erroring
+# without a database, but the Angular client already treats that mode as
+# unavailable (a signed-in library that can't actually save or sync), so
+# `/api/health` also reports it as degraded rather than healthy — see the
+# Health Check section.
 STORY_LAB_CLOUD_STORAGE=postgres
 ```
 
@@ -357,14 +358,18 @@ GET /api/health
 ```
 Returns `200` with `status: "healthy"` normally, or `503` with `status: "degraded"`
 when the rate-limit store, Story Lab job store, or Story Lab cloud storage
-(signed-in profile/project library) is misconfigured (an unsupported mode
-value, or `postgres` mode with no reachable database). Falling back to the
+(signed-in profile/project library) is misconfigured. Falling back to the
 in-memory/non-durable default is not itself degraded for the rate-limit store
-or job store — only an unreachable `postgres` mode or an invalid mode value
-is. Story Lab cloud storage is the one exception: unlike the other two, its
-default mode is `postgres`, not a non-durable fallback (see Environment Setup
-above), so an unset `DATABASE_URL` degrades health by default here until
-`STORY_LAB_CLOUD_STORAGE=non_durable_memory` is set explicitly.
+or job store — those keep doing their actual job (per-instance rate limiting,
+in-process job progress) either way, so only an unsupported mode value or an
+unreachable `postgres` mode degrades them. Story Lab cloud storage is the one
+exception: its default mode is `postgres`, not a non-durable fallback (see
+Environment Setup above), and its `non_durable_memory` mode is *also*
+degraded rather than healthy — unlike the other two stores' non-durable
+defaults, this one means the signed-in profile/project library itself
+doesn't work for its purpose (the Angular client's own `CloudLibraryService`
+already treats that storage mode as unavailable). So this field is healthy
+only in a reachable `postgres` mode.
 
 `services.criticalAlerting` reports where `logCritical(...)` calls are actually
 delivered right now: `{ mode: "console" }` by default, or `{ mode: "webhook",

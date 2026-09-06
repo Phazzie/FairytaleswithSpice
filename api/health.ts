@@ -50,6 +50,24 @@ function isServiceDependencyDegraded(service: DurableStoreHealth): boolean {
   );
 }
 
+/**
+ * Story Lab cloud storage's `non_durable_memory` mode is not a durability
+ * tradeoff the way the rate-limit and job stores' non-durable defaults are —
+ * those keep their actual feature (per-instance rate limiting, in-process job
+ * progress) fully working. Here it means the signed-in profile/project
+ * library itself doesn't work for its purpose: `CloudLibraryService`
+ * (story-generator/src/app/cloud-library.service.ts) already treats a
+ * `storageMode: 'non_durable_memory'` response as `cloud_unavailable`,
+ * read-only-for-inspection, disabling save/load/delete. Reporting `healthy`
+ * while the client's own logic calls the same state unavailable would be
+ * exactly the "claims a capability with no working code path" defect this
+ * routine exists to catch — so this store counts a reachable `postgres`
+ * store as the only healthy state.
+ */
+function isStoryLabCloudStorageDegraded(service: DurableStoreHealth): boolean {
+  return service.mode !== 'postgres' || !service.configured;
+}
+
 async function handler(req: any, res: any) {
   const cors = applyCorsPolicy(req, res, {
     methods: HEALTH_ROUTE_METHODS
@@ -87,7 +105,7 @@ async function handler(req: any, res: any) {
     const degraded =
       isServiceDependencyDegraded(rateLimitStore)
       || isServiceDependencyDegraded(storyLabJobStore)
-      || isServiceDependencyDegraded(storyLabCloudStorage)
+      || isStoryLabCloudStorageDegraded(storyLabCloudStorage)
       || isServiceDependencyDegraded(criticalAlerting);
 
     const health: HealthPayload = {

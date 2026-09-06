@@ -50,6 +50,7 @@ async function main() {
   await testInvalidDatabaseUrlFailsClosed();
   await testDefaultModeIsPostgres();
   await testNonDurableMemoryModeUsesInMemoryStores();
+  await testNonDurableMemorySharesStoreAcrossSeparateCalls();
   await testUnsupportedModeFailsClosed();
   await testCloudStorageModeEnvDoesNotFallThroughToProcessEnv();
 
@@ -212,12 +213,35 @@ async function testNonDurableMemoryModeUsesInMemoryStores() {
   assert(saveResult.success, 'non-durable profile store should accept saves');
   const loadResult = await storage.profileStore.loadProfile(owner);
   assert(loadResult.success && loadResult.data?.profile.displayName === 'Riven', 'non-durable profile store should round-trip in-process');
+  assert(loadResult.data?.createdAt === now, 'non-durable profile store should honor an injected clock, not the real one');
 
   const project = createProject();
   const projectSaveResult = await storage.projectStore.saveProject(owner, project);
   assert(projectSaveResult.success, 'non-durable project store should accept saves');
   const listResult = await storage.projectStore.listProjects(owner, wholeLibraryQuery);
   assert(listResult.success && listResult.data.items[0]?.projectId === project.id, 'non-durable project store should round-trip in-process');
+}
+
+// The above test passes an explicit `now`, so it exercises the per-call
+// isolated store, not the shared module-level singleton every real route
+// handler actually uses (none of them override the clock). This test
+// exercises that singleton directly: two independent
+// `createStoryLabCloudStorage()` calls, exactly like two different route
+// handlers each calling it once, must see the same records — a profile
+// saved through one has to be visible through the other.
+async function testNonDurableMemorySharesStoreAcrossSeparateCalls() {
+  const firstCallStorage = createStoryLabCloudStorage({ env: { STORY_LAB_CLOUD_STORAGE: 'non_durable_memory' } });
+  const secondCallStorage = createStoryLabCloudStorage({ env: { STORY_LAB_CLOUD_STORAGE: 'non_durable_memory' } });
+
+  const profile = createDefaultStoryLabUserProfile(owner, { displayName: 'Marnie' });
+  const saveResult = await firstCallStorage.profileStore.saveProfile(owner, profile);
+  assert(saveResult.success, 'the first call\'s profile store should accept the save');
+
+  const loadResult = await secondCallStorage.profileStore.loadProfile(owner);
+  assert(
+    loadResult.success && loadResult.data?.profile.displayName === 'Marnie',
+    'a second, independent createStoryLabCloudStorage() call should see the first call\'s save'
+  );
 }
 
 async function testUnsupportedModeFailsClosed() {

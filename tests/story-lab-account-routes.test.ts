@@ -1156,11 +1156,16 @@ async function testHealthReportsTheOriginTheCorsPolicyResolved() {
   delete process.env['STORY_LAB_ALLOWED_ORIGINS'];
   delete process.env['FRONTEND_URL'];
   process.env['ALLOWED_ORIGINS'] = configuredOrigin;
-  // Cloud storage's default mode is `postgres` (see storyLabCloudStorageConfig.ts);
-  // this test only cares about CORS-origin reporting, so opt into the
-  // non-durable store to keep it out of the response's degraded/health status.
+  // Cloud storage's default mode is `postgres` (see storyLabCloudStorageConfig.ts),
+  // and its own `non_durable_memory` mode counts as degraded too (the Angular
+  // client treats that storage mode as unavailable — see api/health.ts's
+  // `isStoryLabCloudStorageDegraded`). This test only cares about CORS-origin
+  // reporting, so give it a reachable postgres config to keep it out of the
+  // response's degraded/health status entirely.
   const originalCloudStorageMode = process.env['STORY_LAB_CLOUD_STORAGE'];
-  process.env['STORY_LAB_CLOUD_STORAGE'] = 'non_durable_memory';
+  const originalDatabaseUrl = process.env['DATABASE_URL'];
+  process.env['STORY_LAB_CLOUD_STORAGE'] = 'postgres';
+  process.env['DATABASE_URL'] = 'postgresql://user:password@example.invalid/story_lab';
 
   try {
     const response = new FakeResponse();
@@ -1182,6 +1187,7 @@ async function testHealthReportsTheOriginTheCorsPolicyResolved() {
     restoreEnv('STORY_LAB_ALLOWED_ORIGINS', originalStoryLabOrigins);
     restoreEnv('FRONTEND_URL', originalFrontendUrl);
     restoreEnv('STORY_LAB_CLOUD_STORAGE', originalCloudStorageMode);
+    restoreEnv('DATABASE_URL', originalDatabaseUrl);
   }
 }
 

@@ -95,6 +95,17 @@ function dataOf(response: FakeResponse): {
   return (response.body as { data: ReturnType<typeof dataOf> }).data;
 }
 
+// Story Lab cloud storage is only ever `healthy` in a reachable `postgres`
+// mode (see `isStoryLabCloudStorageDegraded` in `api/health.ts`), so every
+// test below whose subject is a *different* service needs this to reach an
+// overall `healthy`/200 response, or its degraded assertion would be
+// attributable to cloud storage instead of (or as well as) the thing it's
+// actually testing.
+const RECONCILED_CLOUD_STORAGE_ENV = {
+  STORY_LAB_CLOUD_STORAGE: 'postgres',
+  DATABASE_URL: 'postgresql://user:password@example.invalid/story_lab'
+};
+
 async function main(): Promise<void> {
   await testHealthyWithDefaultMemoryStores();
   await testHealthyWithConfiguredGrokKey();
@@ -104,7 +115,7 @@ async function main(): Promise<void> {
   await testDegradedOnUnreachablePostgresJobStore();
   await testDegradedOnCloudStorageDefaultingToUnconfiguredPostgres();
   await testDegradedOnUnsupportedCloudStorageMode();
-  await testHealthyWhenCloudStorageExplicitlyOptsIntoNonDurableMemory();
+  await testDegradedWhenCloudStorageOptsIntoNonDurableMemory();
   await testHealthyWhenCloudStoragePostgresConfigured();
   await testCriticalAlertingDefaultsToConsole();
   await testCriticalAlertingReportsWebhookModeInProductionWithoutDegradingHealth();
@@ -119,12 +130,7 @@ async function testHealthyWithDefaultMemoryStores(): Promise<void> {
     XAI_API_KEY: undefined,
     RATE_LIMIT_STORE: undefined,
     STORY_LAB_JOB_STORE: undefined,
-    // Unlike its two siblings, cloud storage's default mode is `postgres`
-    // (see `storyLabCloudStorageConfig.ts`), so it needs an explicit opt-in
-    // to stay non-durable here; its unconfigured-by-default behavior is
-    // covered separately below.
-    STORY_LAB_CLOUD_STORAGE: 'non_durable_memory',
-    DATABASE_URL: undefined
+    ...RECONCILED_CLOUD_STORAGE_ENV
   });
 
   assert(response.statusCode === 200, 'default memory-backed stores should answer 200');
@@ -135,22 +141,19 @@ async function testHealthyWithDefaultMemoryStores(): Promise<void> {
   assert(data.services.rateLimitStore.configured, 'default in-memory rate limit store should be configured');
   assert(data.services.storyLabJobStore.mode === 'non_durable_memory', 'default job store should report non_durable_memory mode');
   assert(data.services.storyLabJobStore.configured, 'default non-durable job store should be configured');
-  assert(data.services.storyLabCloudStorage.mode === 'non_durable_memory', 'opted-in cloud storage should report non_durable_memory mode');
-  assert(data.services.storyLabCloudStorage.configured, 'opted-in non-durable cloud storage should be configured');
 }
 
 async function testHealthyWithConfiguredGrokKey(): Promise<void> {
-  const response = await get({ XAI_API_KEY: 'sk-test-key', STORY_LAB_CLOUD_STORAGE: 'non_durable_memory' });
+  const response = await get({ XAI_API_KEY: 'sk-test-key', ...RECONCILED_CLOUD_STORAGE_ENV });
 
   assert(response.statusCode === 200, 'a configured XAI key should still answer 200');
   assert(dataOf(response).services.grok === 'configured', 'a set XAI_API_KEY should report grok as configured');
 }
 
 async function testDegradedOnUnsupportedRateLimitStoreMode(): Promise<void> {
-  // Cloud storage's own default-to-postgres degradation is covered
-  // separately below; pinned to non_durable_memory here so this test's
-  // degraded/503 assertions are attributable only to the rate limit store.
-  const response = await get({ RATE_LIMIT_STORE: 'planet-scale', STORY_LAB_CLOUD_STORAGE: 'non_durable_memory' });
+  // Reconciled so this test's degraded/503 assertions are attributable only
+  // to the rate limit store, not to cloud storage's own default.
+  const response = await get({ RATE_LIMIT_STORE: 'planet-scale', ...RECONCILED_CLOUD_STORAGE_ENV });
 
   assert(response.statusCode === 503, 'an unsupported rate limit store mode should answer 503');
   const data = dataOf(response);
@@ -160,7 +163,7 @@ async function testDegradedOnUnsupportedRateLimitStoreMode(): Promise<void> {
 }
 
 async function testDegradedOnUnsupportedJobStoreMode(): Promise<void> {
-  const response = await get({ STORY_LAB_JOB_STORE: 'planet-scale', STORY_LAB_CLOUD_STORAGE: 'non_durable_memory' });
+  const response = await get({ STORY_LAB_JOB_STORE: 'planet-scale', ...RECONCILED_CLOUD_STORAGE_ENV });
 
   assert(response.statusCode === 503, 'an unsupported job store mode should answer 503');
   const data = dataOf(response);
@@ -168,12 +171,19 @@ async function testDegradedOnUnsupportedJobStoreMode(): Promise<void> {
   assert(data.services.storyLabJobStore.mode === 'unsupported', 'the unsupported mode should be surfaced verbatim');
 }
 
+// `DATABASE_URL` is one shared env var read by all three durable-store
+// configs (`durableStoreEnvResolution.ts`), so a test that needs it absent
+// to exercise the rate-limit store's own unreachable-postgres path cannot
+// also give cloud storage a reachable one — cloud storage is unavoidably
+// degraded here too, by design (see `isStoryLabCloudStorageDegraded`). The
+// overall `status`/`statusCode` assertions below are therefore not, on their
+// own, proof this test still targets the rate-limit store specifically; the
+// direct `data.services.rateLimitStore.mode`/`.configured` assertions are —
+// they read straight off that store's own config, independent of either
+// aggregation function, so they still catch a regression in its own
+// mode/configured computation even though the overall status can't isolate it.
 async function testDegradedOnUnreachablePostgresRateLimitStore(): Promise<void> {
-  const response = await get({
-    RATE_LIMIT_STORE: 'postgres',
-    DATABASE_URL: undefined,
-    STORY_LAB_CLOUD_STORAGE: 'non_durable_memory'
-  });
+  const response = await get({ RATE_LIMIT_STORE: 'postgres', DATABASE_URL: undefined });
 
   assert(response.statusCode === 503, 'a postgres rate limit store with no DATABASE_URL should answer 503');
   const data = dataOf(response);
@@ -182,12 +192,10 @@ async function testDegradedOnUnreachablePostgresRateLimitStore(): Promise<void> 
   assert(!data.services.rateLimitStore.configured, 'a postgres store with no DATABASE_URL should not be configured');
 }
 
+// See the comment on `testDegradedOnUnreachablePostgresRateLimitStore` above —
+// the same shared-`DATABASE_URL` constraint applies here.
 async function testDegradedOnUnreachablePostgresJobStore(): Promise<void> {
-  const response = await get({
-    STORY_LAB_JOB_STORE: 'postgres',
-    DATABASE_URL: undefined,
-    STORY_LAB_CLOUD_STORAGE: 'non_durable_memory'
-  });
+  const response = await get({ STORY_LAB_JOB_STORE: 'postgres', DATABASE_URL: undefined });
 
   assert(response.statusCode === 503, 'a postgres job store with no DATABASE_URL should answer 503');
   const data = dataOf(response);
@@ -196,10 +204,6 @@ async function testDegradedOnUnreachablePostgresJobStore(): Promise<void> {
   assert(!data.services.storyLabJobStore.configured, 'a postgres store with no DATABASE_URL should not be configured');
 }
 
-// This store's own defaulting-to-degraded behavior is covered above by
-// `testDegradedOnCloudStorageDefaultingToUnconfiguredPostgres`; every
-// critical-alerting test below opts it into non-durable memory so it isn't
-// what's making the response degraded.
 // The whole point of this addition: cloud storage's default mode is
 // `postgres` (unlike its two siblings), so a deployment that never set
 // `DATABASE_URL` reports fully `healthy` no longer — this is exactly the
@@ -224,21 +228,24 @@ async function testDegradedOnUnsupportedCloudStorageMode(): Promise<void> {
   assert(!data.services.storyLabCloudStorage.configured, 'an unsupported mode should not be configured');
 }
 
-async function testHealthyWhenCloudStorageExplicitlyOptsIntoNonDurableMemory(): Promise<void> {
+// `non_durable_memory` reports `configured: true` (the store itself works),
+// but the Angular client's `CloudLibraryService` treats that same
+// `storageMode` as `cloud_unavailable` — read-only-for-inspection, with
+// save/load/delete disabled. `/api/health` has to agree with the client
+// here: a store that "works" but whose own product surface calls it
+// unavailable is a degraded dependency, not a healthy one.
+async function testDegradedWhenCloudStorageOptsIntoNonDurableMemory(): Promise<void> {
   const response = await get({ STORY_LAB_CLOUD_STORAGE: 'non_durable_memory', DATABASE_URL: undefined });
 
-  assert(response.statusCode === 200, 'an explicit non-durable-memory opt-in should answer 200');
+  assert(response.statusCode === 503, 'an explicit non-durable-memory opt-in should answer 503');
   const data = dataOf(response);
-  assert(data.status === 'healthy', 'an explicit non-durable-memory opt-in should report healthy');
+  assert(data.status === 'degraded', 'an explicit non-durable-memory opt-in should report degraded');
   assert(data.services.storyLabCloudStorage.mode === 'non_durable_memory', 'the opted-in mode should be surfaced');
-  assert(data.services.storyLabCloudStorage.configured, 'the non-durable memory store should report configured');
+  assert(data.services.storyLabCloudStorage.configured, 'the non-durable memory store itself still reports configured');
 }
 
 async function testHealthyWhenCloudStoragePostgresConfigured(): Promise<void> {
-  const response = await get({
-    STORY_LAB_CLOUD_STORAGE: 'postgres',
-    DATABASE_URL: 'postgresql://user:password@example.invalid/story_lab'
-  });
+  const response = await get(RECONCILED_CLOUD_STORAGE_ENV);
 
   assert(response.statusCode === 200, 'a reachable postgres cloud storage store should answer 200');
   const data = dataOf(response);
@@ -248,7 +255,7 @@ async function testHealthyWhenCloudStoragePostgresConfigured(): Promise<void> {
 }
 
 async function testCriticalAlertingDefaultsToConsole(): Promise<void> {
-  const response = await get({ CRITICAL_ALERT_WEBHOOK_URL: undefined, STORY_LAB_CLOUD_STORAGE: 'non_durable_memory' });
+  const response = await get({ CRITICAL_ALERT_WEBHOOK_URL: undefined, ...RECONCILED_CLOUD_STORAGE_ENV });
 
   assert(response.statusCode === 200, 'an unconfigured critical alert destination should not affect health status');
   const data = dataOf(response);
@@ -260,7 +267,7 @@ async function testCriticalAlertingReportsWebhookModeInProductionWithoutDegradin
   const response = await get({
     NODE_ENV: 'production',
     CRITICAL_ALERT_WEBHOOK_URL: 'https://hooks.example.com/alert',
-    STORY_LAB_CLOUD_STORAGE: 'non_durable_memory'
+    ...RECONCILED_CLOUD_STORAGE_ENV
   });
 
   assert(response.statusCode === 200, 'a configured critical alert webhook should still answer 200');
@@ -278,7 +285,7 @@ async function testCriticalAlertingReportsConsoleOutsideProductionEvenWhenUrlCon
   const response = await get({
     NODE_ENV: 'development',
     CRITICAL_ALERT_WEBHOOK_URL: 'https://hooks.example.com/alert',
-    STORY_LAB_CLOUD_STORAGE: 'non_durable_memory'
+    ...RECONCILED_CLOUD_STORAGE_ENV
   });
 
   assert(response.statusCode === 200, 'a valid webhook outside production should not affect health status');
@@ -296,7 +303,7 @@ async function testCriticalAlertingDegradedOnMalformedWebhookUrl(): Promise<void
   const response = await get({
     NODE_ENV: 'production',
     CRITICAL_ALERT_WEBHOOK_URL: 'not-a-url',
-    STORY_LAB_CLOUD_STORAGE: 'non_durable_memory'
+    ...RECONCILED_CLOUD_STORAGE_ENV
   });
 
   assert(response.statusCode === 503, 'a malformed critical alert webhook URL should answer 503');
@@ -304,6 +311,8 @@ async function testCriticalAlertingDegradedOnMalformedWebhookUrl(): Promise<void
   assert(data.status === 'degraded', 'a malformed critical alert webhook URL should report degraded');
   assert(data.services.criticalAlerting.mode === 'webhook', 'the requested webhook mode should be surfaced verbatim');
   assert(!data.services.criticalAlerting.configured, 'a malformed URL should not be configured');
+  assert(data.services.storyLabCloudStorage.mode === 'postgres', 'cloud storage should be reconciled to healthy here too');
+  assert(data.services.storyLabCloudStorage.configured, 'cloud storage should not be what makes this response degraded');
 }
 
 main().catch(error => {

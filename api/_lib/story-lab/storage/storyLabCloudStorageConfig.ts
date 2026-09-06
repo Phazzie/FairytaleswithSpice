@@ -85,8 +85,16 @@ export function createStoryLabCloudStorage(
   const normalizedMode = normalizeDurableStoreMode(requestedMode);
 
   if (normalizedMode === 'non_durable_memory' || normalizedMode === 'memory') {
-    const profileStore = options.nonDurableProfileStore ?? sharedNonDurableStoryLabProfileStore;
-    const projectStore = options.nonDurableProjectStore ?? sharedNonDurableStoryProjectStore;
+    // The shared singletons always use the real clock. An explicit `now`
+    // override (only ever supplied by tests — production never passes one)
+    // needs its own isolated stores rather than silently being ignored,
+    // since the Postgres branch below honors it per-call.
+    const profileStore =
+      options.nonDurableProfileStore
+      ?? (options.now ? createNonDurableInMemoryStoryLabProfileStore({ now: options.now }) : sharedNonDurableStoryLabProfileStore);
+    const projectStore =
+      options.nonDurableProjectStore
+      ?? (options.now ? createNonDurableInMemoryStoryProjectStore({ now: options.now }) : sharedNonDurableStoryProjectStore);
     return {
       requestedMode,
       mode: 'non_durable_memory',
