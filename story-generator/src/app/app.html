@@ -730,7 +730,7 @@
           <strong>Account </strong>{{ cloudAccountStatusLabel() }}
         </p>
         <div class="story-actions" data-testid="cloud-library-actions">
-          <button type="button" class="ghost compact" data-testid="cloud-account-action" (click)="showCloudAccountSetupStatus()" [disabled]="isCloudLibraryBusy()">
+          <button type="button" class="ghost compact" data-testid="cloud-account-action" (click)="handleCloudAccountAction()" [disabled]="isCloudLibraryBusy()">
             {{ cloudAccountActionLabel() }}
           </button>
           <button
@@ -942,4 +942,11 @@
 @defer (when showDebugPanel()) {
   <app-debug-panel data-testid="story-lab-debug-panel"></app-debug-panel>
   <app-error-display data-testid="story-lab-error-display"></app-error-display>
+}
+
+@if (isStoryLabProfileOpen()) {
+  <app-story-lab-profile-panel
+    (closed)="closeStoryLabProfile()"
+    (saved)="onStoryLabProfileSaved($event)"
+  ></app-story-lab-profile-panel>
 }

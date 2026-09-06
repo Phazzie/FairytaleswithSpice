@@ -23,7 +23,15 @@ import { isVocabularyMember } from '../../../shared/storyStateVocabulary';
 import { buildStoryHtmlDocument } from './story-html-exporter';
 import { BlueprintValidationField, FormValidationService } from './form-validation.service';
 import { AcceptedMemoryCardEditDraft, MemoryCardDraftItem, MemoryCardService } from './memory-card.service';
-import { CREATURE_ARCHETYPES, readCreatureDisplayName } from '../../../shared/creatureVocabulary';
+import {
+  ChoiceOption,
+  CreatureOption,
+  HeatContractOption,
+  creatureOptions as STORY_LAB_CREATURE_OPTIONS,
+  heatBoundaryOptions as STORY_LAB_HEAT_BOUNDARY_OPTIONS,
+  heatTensionOptions as STORY_LAB_HEAT_TENSION_OPTIONS,
+  toneOptions as STORY_LAB_TONE_OPTIONS
+} from './story-lab-option-copy';
 import {
   AudioConversionSeam,
   BatchProgressState,
@@ -37,15 +45,12 @@ import {
   EXPORT_FORMATS,
   ExportFormat,
   GeneratedChapter,
-  HEAT_INTIMACY_BOUNDARIES,
-  HEAT_TENSION_MODES,
   HeatContract,
   HeatIntimacyBoundary,
   HeatTensionMode,
   IMAGE_STYLES,
   ImageGenerationSeam,
   ImageStyle,
-  NARRATIVE_TONES,
   NarrativeTone,
   PlotThread,
   RELATIONSHIP_KINDS,
@@ -62,6 +67,7 @@ import {
   StoryLabJob,
   StoryLabJobStatus,
   STORY_LAB_JOB_STEP_LABELS,
+  StoryLabUserProfile,
   StoryWorkbenchSession,
   ThemeSeed,
   WORD_BUDGETS,
@@ -78,6 +84,7 @@ import { DebugPanel } from './debug-panel/debug-panel';
 import { ErrorDisplayComponent } from './error-display/error-display';
 import { NotificationService } from './notification.service';
 import { NotificationsComponent } from './notifications.component';
+import { StoryLabProfilePanelComponent } from './story-lab-profile-panel/story-lab-profile-panel.component';
 
 type BlueprintForm = StoryBlueprint & {
   chapterBatchSize: ChapterBatchSize;
@@ -98,20 +105,8 @@ type StorySkinOption = {
   mood: string;
 };
 
-type CreatureOption = {
-  id: CreatureArchetype;
-  label: string;
-  description: string;
-};
-
 type SpiceOption = {
   level: SpicyLevel;
-  label: string;
-  description: string;
-};
-
-type HeatContractOption<T extends string> = {
-  id: T;
   label: string;
   description: string;
 };
@@ -121,82 +116,20 @@ type ContinuationDirection = {
   brief: string;
 };
 
-type ChoiceOption<TId extends string | number> = {
-  id: TId;
-  label: string;
-};
-
 /**
- * The words this form puts in front of the reader for each value of a closed
- * vocabulary — and nothing else.
- *
- * Every picker below used to be a hand-written array of `{ id, label,
- * description }`, which made the array two things at once: the copy that says
- * what a `vampire` is called, and a second declaration of *which* creatures
- * there are. The second one is the problem. `CREATURE_ARCHETYPES`,
- * `NARRATIVE_TONES`, `SPICY_LEVELS`, `WORD_BUDGETS`, `CHAPTER_BATCH_SIZES`,
- * `HEAT_TENSION_MODES`, and `HEAT_INTIMACY_BOUNDARIES` are the vocabularies the
- * API's parser refuses a blueprint against and `FormValidationService` checks
- * this form's own state against — `shared/creatureVocabulary` and the tables in
- * `contracts.ts` exist precisely so those two readers cannot disagree — and the
- * screen that decides what a reader can actually send was not one of the
- * readers.
- *
- * A value added to a vocabulary therefore reached the type, the validator, the
- * route, the prompt builders, and the log filter, and stopped at the picker:
- * the new creature, tone, or word budget is accepted everywhere and offered
- * nowhere, with nothing to fail and nothing on the page to say it is missing.
- * Typing the copy as a total `Record` over the vocabulary is what turns that
- * into a compile error — TypeScript refuses a record missing a key — and
- * mapping the picker over the table rather than over the record's own keys is
- * what keeps the offered order the vocabulary's.
- *
- * The `label`s below are the ones this form already showed, transcribed
- * unchanged; the creature labels are dropped entirely in favour of
- * `readCreatureDisplayName`, which is the title-cased id every one of them
- * already was.
+ * `CreatureOption`/`HeatContractOption`/`ChoiceOption` and the picker copy
+ * they're built from (creature, tone, heat tension/boundary) live in
+ * `story-lab-option-copy.ts` — shared with the Story Lab profile panel, which
+ * needs the same pickers to let a signed-in user set their favorite
+ * creatures/tones and default heat contract. See that module's doc comment
+ * for what a second hand-written copy of a vocabulary picker costs.
  */
-const CREATURE_DESCRIPTIONS: Record<CreatureArchetype, string> = {
-  vampire: 'Immortal desire, old secrets, dangerous elegance.',
-  werewolf: 'Pack bonds, moonlit hunger, protective intensity.',
-  fairy: 'Fae bargains, beautiful traps, glittering menace.',
-  siren: 'Songs, saltwater vows, temptation with teeth.',
-  djinn: 'Wishes, bargains, heat shimmer magic.',
-  witch: 'Spellwork, grimoires, familiar old power.',
-  dragon: 'Treasure, pride, scale-deep obsession.',
-  demon: 'Temptation, contracts, wicked devotion.',
-  angel: 'Forbidden grace, falling, sacred desire.',
-  mermaid: 'Tides, curses, pearl-lit longing.'
-};
-
 const SPICE_LEVEL_COPY: Record<SpicyLevel, { label: string; description: string }> = {
   1: { label: 'Storybook Romance', description: 'Longing, flirtation, no explicit detail.' },
   2: { label: 'Warm', description: 'Kissing, sensual tension, restrained heat.' },
   3: { label: 'Spicy', description: 'Adult heat, literary, fade-to-black before graphic detail.' },
   4: { label: 'Very Spicy', description: 'Explicit consensual intimacy with emotional stakes.' },
   5: { label: 'Inferno', description: 'Maximum explicit consensual adult fantasy.' }
-};
-
-const HEAT_TENSION_COPY: Record<HeatTensionMode, { label: string; description: string }> = {
-  slow_burn: { label: 'Slow burn', description: 'Longing, restraint, charged pauses.' },
-  dangerous_proximity: { label: 'Danger close', description: 'Threat, protection, forced proximity.' },
-  playful_banter: { label: 'Banter', description: 'Teasing, challenge, mischief.' },
-  devotional_longing: { label: 'Devotion', description: 'Reverence, sacrifice, tenderness.' }
-};
-
-const HEAT_BOUNDARY_COPY: Record<HeatIntimacyBoundary, { label: string; description: string }> = {
-  fade_to_black: { label: 'Fade to black', description: 'Build heat, close the door early.' },
-  closed_door: { label: 'Closed door', description: 'Romance stays implied off-page.' },
-  literary_on_page: { label: 'Literary on-page', description: 'Consensual heat with polished language.' }
-};
-
-const NARRATIVE_TONE_LABELS: Record<NarrativeTone, string> = {
-  romance: 'Romance',
-  dark_romance: 'Dark Romance',
-  mystery: 'Mystery',
-  adventure: 'Adventure',
-  comedy: 'Comedy',
-  tragedy: 'Tragedy'
 };
 
 /**
@@ -476,7 +409,15 @@ const JOB_KIND_COPY: Record<
 @Component({
   selector: 'app-story-lab',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, NotificationsComponent, DebugPanel, ErrorDisplayComponent],
+  imports: [
+    CommonModule,
+    FormsModule,
+    RouterLink,
+    NotificationsComponent,
+    DebugPanel,
+    ErrorDisplayComponent,
+    StoryLabProfilePanelComponent
+  ],
   // Component-scoped rather than root-provided — see MemoryCardService's
   // own doc comment for why a root singleton would leak memory-card state
   // across navigations away from and back to this component.
@@ -509,13 +450,9 @@ export class App implements OnDestroy {
     { id: 'writing-desk', label: 'Cozy Witchy Writing Desk', mood: 'Intimate, earthy, creative' }
   ];
 
-  // Built from the vocabulary tables rather than restated — see the copy
-  // records above for what a picker that declares its own vocabulary costs.
-  readonly creatureOptions: CreatureOption[] = CREATURE_ARCHETYPES.map(id => ({
-    id,
-    label: readCreatureDisplayName(id),
-    description: CREATURE_DESCRIPTIONS[id]
-  }));
+  // Built from `story-lab-option-copy.ts`, shared with the Story Lab profile
+  // panel — see that module's doc comment for why.
+  readonly creatureOptions: CreatureOption[] = STORY_LAB_CREATURE_OPTIONS;
 
   // Read from the shared seed list rather than restated here. These ids do not
   // stay in the browser: they travel to `/api/image/generate`, `/api/export/save`,
@@ -530,32 +467,16 @@ export class App implements OnDestroy {
     ...SPICE_LEVEL_COPY[level]
   }));
 
-  readonly heatTensionOptions: HeatContractOption<HeatTensionMode>[] = HEAT_TENSION_MODES.map(id => ({
-    id,
-    ...HEAT_TENSION_COPY[id]
-  }));
+  readonly heatTensionOptions: HeatContractOption<HeatTensionMode>[] = STORY_LAB_HEAT_TENSION_OPTIONS;
 
-  readonly heatBoundaryOptions: HeatContractOption<HeatIntimacyBoundary>[] = HEAT_INTIMACY_BOUNDARIES.map(id => ({
-    id,
-    ...HEAT_BOUNDARY_COPY[id]
-  }));
+  readonly heatBoundaryOptions: HeatContractOption<HeatIntimacyBoundary>[] = STORY_LAB_HEAT_BOUNDARY_OPTIONS;
 
   /**
-   * The three vocabularies the template used to write out as `<option>`s.
-   *
-   * A `<select>`'s options are the whole of what a reader may choose, so these
-   * were the same second declaration the arrays above were, one layer further
-   * from anything that could check them: a tone added to `NARRATIVE_TONES` is
-   * accepted by the parser and by `FormValidationService`, and a form built out
-   * of six hand-written `<option>` elements would never offer it.
-   *
-   * The batch sizes need no copy table — "1 chapter", "2 chapters" is the
-   * number and a plural — so their labels are built from the value itself.
+   * The batch sizes and word budgets below need no copy table beyond
+   * `WORD_BUDGET_LABELS` — "1 chapter", "2 chapters" is the number and a
+   * plural — so their labels are built from the value itself.
    */
-  readonly toneOptions: ChoiceOption<NarrativeTone>[] = NARRATIVE_TONES.map(id => ({
-    id,
-    label: NARRATIVE_TONE_LABELS[id]
-  }));
+  readonly toneOptions: ChoiceOption<NarrativeTone>[] = STORY_LAB_TONE_OPTIONS;
 
   readonly wordBudgetOptions: ChoiceOption<WordBudget>[] = WORD_BUDGETS.map(id => ({
     id,
@@ -1169,6 +1090,7 @@ export class App implements OnDestroy {
   // template still needs its own signal to decide whether a sign-out control
   // has anything to do, since `AuthService` itself is private to this class.
   readonly isCloudAccountSignedIn = computed(() => this.authService.isSignedIn());
+  readonly isStoryLabProfileOpen = signal(false);
   readonly chapterGroups = computed<ChapterGroupViewModel[]>(() => {
     const chapters = this.workbench().chapterHistory;
     if (!chapters.length) {
@@ -1248,6 +1170,15 @@ export class App implements OnDestroy {
     // `isSignedIn()`/`accountId()` and forwarding them.
     effect(() => {
       this.cloudLibrary.syncWithAuthState(this.authService.isSignedIn(), this.authService.accountId());
+    });
+
+    // Separate effect from the one above, tracking the same two signals —
+    // see this codebase's own note on why the reaction lives in a plain,
+    // directly-callable method rather than inline here (a constructor
+    // effect's rerun is not reliably exercised through this app's TestBed
+    // setup, so the method itself is what tests drive).
+    effect(() => {
+      this.syncStoryLabProfileDefaultsWithAuthState(this.authService.isSignedIn(), this.authService.accountId());
     });
   }
 
@@ -1960,6 +1891,106 @@ export class App implements OnDestroy {
 
   signOutOfCloudAccount(): Promise<void> {
     return this.cloudLibrary.signOut();
+  }
+
+  /**
+   * What the "Profile" action in the account panel does once an account is
+   * actually connected. Before this, `cloudAccountActionLabel()` returned
+   * `'Profile'` for a `cloud_synced` account but the button underneath it
+   * still called `showCloudAccountSetupStatus()`, which only pops an
+   * "Account connected" toast — there was no way to reach the profile it
+   * named. Every other sync mode keeps the existing connect/status flow.
+   */
+  handleCloudAccountAction(): void {
+    if (this.cloudLibrarySyncState().mode === 'cloud_synced') {
+      this.openStoryLabProfile();
+      return;
+    }
+
+    // Fire-and-forget, same as this template binding's previous target
+    // (`showCloudAccountSetupStatus()`) always was — `void` marks that
+    // intentional rather than leaving an unhandled promise from a template
+    // event binding, which is never awaited either way.
+    void this.showCloudAccountSetupStatus();
+  }
+
+  openStoryLabProfile(): void {
+    this.isStoryLabProfileOpen.set(true);
+  }
+
+  closeStoryLabProfile(): void {
+    this.isStoryLabProfileOpen.set(false);
+  }
+
+  onStoryLabProfileSaved(profile: StoryLabUserProfile): void {
+    this.isStoryLabProfileOpen.set(false);
+    this.applyStoryLabProfileDefaults(profile);
+    // A changed `librarySort` only takes effect on the next `/account/projects`
+    // read (see `readLibrarySort` in `accountRouteHandlers.ts`), so without
+    // this the saved preference would silently wait for whatever unrelated
+    // action next refreshed the library.
+    this.refreshCloudLibrary();
+  }
+
+  /**
+   * Seeds the still-blank blueprint from the profile's saved defaults —
+   * favorite creature/tone and default heat contract — the moment they're
+   * saved. Before this, PR70_RECOVERY_CHANGELOG.md recorded these three
+   * fields as "stored, validated, redacted and persisted with no reader in
+   * either tree" — the profile panel this method backs made them editable,
+   * but editable is not applied, and a "default" nothing ever reads is the
+   * same false affordance the "Profile" button itself used to be.
+   *
+   * Only applies before a story exists in this session: once
+   * `workbench().story` is set the reader is mid-story, and silently
+   * rewriting the heat contract or creature underneath them because they
+   * happened to update their profile would be its own bug.
+   */
+  private applyStoryLabProfileDefaults(profile: StoryLabUserProfile): void {
+    if (this.workbench().story) {
+      return;
+    }
+
+    const { favoriteCreatures, favoriteTones, defaultHeatContract } = profile.preferences;
+    this.blueprint.update(current => ({
+      ...current,
+      creature: favoriteCreatures[0] ?? current.creature,
+      tone: favoriteTones[0] ?? current.tone,
+      heatContract: this.normalizeHeatContract(defaultHeatContract)
+    }));
+  }
+
+  // A plain field, not a signal — tracking it in the constructor effect
+  // above would make it a dependency of that same effect, so this method's
+  // own write to it (on every fetch it starts) would immediately retrigger
+  // the effect. Records which account's profile defaults have already been
+  // fetched this session, so an ordinary token refresh under the same
+  // account does not refetch on every rerun, while an account switch (a
+  // different id) does.
+  private storyLabProfileDefaultsFetchedForAccountId: string | null = null;
+
+  /**
+   * The other half of the fix `onStoryLabProfileSaved` makes for the moment
+   * of saving: without this, a returning signed-in user's saved
+   * `favoriteCreatures`/`favoriteTones`/`defaultHeatContract` were only ever
+   * applied if they opened the profile panel and saved again in the same
+   * session — a fresh sign-in on a later visit still used the hard-coded
+   * defaults until then. Fetches at most once per signed-in account; a
+   * failed fetch is left silent (the same hard-coded defaults it would have
+   * replaced), since this is a background convenience, not a load-bearing
+   * request the reader is waiting on.
+   */
+  syncStoryLabProfileDefaultsWithAuthState(signedIn: boolean, accountId: string | null): void {
+    if (!signedIn || accountId === null || accountId === this.storyLabProfileDefaultsFetchedForAccountId) {
+      return;
+    }
+
+    this.storyLabProfileDefaultsFetchedForAccountId = accountId;
+    this.storyService.getStoryLabProfile().subscribe(response => {
+      if (response.success && response.data) {
+        this.applyStoryLabProfileDefaults(response.data);
+      }
+    });
   }
 
   saveActiveProjectToCloud() {
