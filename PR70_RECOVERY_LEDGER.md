@@ -1702,3 +1702,31 @@ Use this template for detailed entries as each PR is handled:
   - It does materially improve the documented dev/test audit state, so the shipping report needed a final accuracy update.
 - GitHub PR closure note:
   - Merged. No closure comment needed.
+
+## Stale-PR triage cycle - 2026-09-06 04:52 UTC
+
+Scope per the automated stale-PR recovery routine: open PRs with no activity in the last 3 days, excluding `claude/dreamy-bardeen-*` branches (owned by the separate hourly quick-wins routine). Six PRs were open at cycle start (#198, #322, #316, #325, #327, #341); only #198, #322 and #316 were stale (last activity before 2026-09-03T04:52Z). #325, #327 and #341 all had activity inside the 3-day window and were left untouched this cycle.
+
+None qualified for the "small and mechanical" auto-merge bar (single same-major dependency bump / docs-only / single-purpose cleanup with green CI and no open design questions). All three landed in the "larger or riskier" bucket, so each got exactly one status comment rather than a merge or close, per this routine's instructions.
+
+### PR #198 - Plan Story Lab foundation and production completion
+
+- Status: `pending` (status comment posted, not merged or closed)
+- Disposition this cycle: Draft architecture/planning PR (2.3k lines). Verified `git merge-tree origin/main` against the branch fails with "refusing to merge unrelated histories" — the branch's root commit (`b75a9cd0...`) shares no ancestor with current `origin/main`'s root (`cab90894...`), so main's history was rewritten since this branch was cut and it cannot be merged, manually or otherwise. Also verified neither `STORY_LAB_FOUNDATION_AND_LIVING_BOOK_EXEC_PLAN.md` nor `STORY_LAB_PRODUCTION_COMPLETION_EXEC_PLAN.md` exists on `main` — the two-plan sequence this PR proposed to freeze was never adopted; `AGENTS.md`'s current operating direction routes through a different, more granular set of exec plans instead.
+- Why not closed here: architecture/planning documents are explicitly out of this routine's merge-or-close authority, and AGENTS.md requires accepted/not-taken material to be recorded before any close - a maintainer call.
+- Recommendation posted to the PR: close-as-superseded; re-propose any still-wanted material (`docs/EXTERNAL_REVIEW_POLICY.md`, the two `.agents/skills/fairytales-*` skills) as a fresh PR from current `main`.
+- CI: `Validate Vercel recovery build` failed twice at the PR's last push (account billing lock, per the PR's own body); Vercel deploy and SonarCloud passed.
+
+### PR #322 - 35 advisories cleared inside the ranges already declared (lockfile-only)
+
+- Status: `pending` (status comment posted, not merged)
+- Disposition this cycle: Confirmed the Dependabot PR this PR was written to unblock, #318, closed unmerged on 2026-09-03. Its Dependabot replacement, #327 (opened the same day), reintroduces the identical defect - bundling `@angular/*` 20.3.22 to 22.1.5 (a two-major jump) into the same group as unrelated patch/minor advisory fixes, the exact anti-pattern `AGENTS.md` line 218 warns against. So #322's narrower, manifest-untouched fix is still the live candidate for these advisories. `git merge-tree` against current `main` shows only a one-file conflict in `PR70_RECOVERY_CHANGELOG.md` (expected, already documented in the PR body as the same overlap #312/#313/#315/#316 have); both lockfiles apply cleanly. CI (Recovery CI, SonarCloud, Vercel) is green.
+- Why not merged here: this is a multi-package dependency bundle (npm update touched ~95+ resolutions across two lockfiles, four of them crossing a major version internally) - outside this routine's "single same-major dependency bump" auto-merge bar, even though no `package.json` range changed.
+- Recommendation posted to the PR: rebase-and-merge after a maintainer confirms, given #318's closure and #327 repeating its mistake.
+
+### PR #316 - `redactBearerTokens` took the word after any standalone `bearer`
+
+- Status: `pending` (status comment posted, not merged)
+- Disposition this cycle: Base auto-retargeted to `main` now that #315 merged, as the PR anticipated. `git merge-tree` against current `main` shows no conflicts; CI (SonarCloud, Vercel) is green.
+- Why not merged here: 39 commits / 33 comments rewriting the credential-detection logic in `shared/sensitiveTextRedaction.ts`, with the PR's own description naming two explicit open decisions for the owner (the redaction residual's exact boundary; whether to require generated hex keys so the length-based rule can be dropped) plus a deliberately-unfixed known gap. Not small-and-mechanical and not this routine's call regardless of green CI.
+- Recommendation posted to the PR: needs a human decision from the repo owner on the two named open questions before merge.
