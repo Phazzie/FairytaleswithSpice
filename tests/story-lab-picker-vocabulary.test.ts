@@ -45,6 +45,14 @@ function readSource(relativePath: string): string {
 
 const appComponent = readSource('story-generator/src/app/app.ts');
 const appTemplate = readSource('story-generator/src/app/app.html');
+// The creature/tone/heat-contract pickers moved out of `app.ts` into this
+// module so the Story Lab profile panel could read the same tables instead
+// of restating them a fourth time — see that module's doc comment. The form
+// is still built from these tables, just one file over, so this test reads
+// both as one source rather than only the component that now merely imports
+// the built arrays.
+const storyLabOptionCopy = readSource('story-generator/src/app/story-lab-option-copy.ts');
+const appPickerSource = `${appComponent}\n${storyLabOptionCopy}`;
 const provingGroundsComponent = readSource('story-generator/src/app/proving-grounds/proving-grounds.ts');
 const provingGroundsTemplate = readSource('story-generator/src/app/proving-grounds/proving-grounds.html');
 
@@ -53,7 +61,7 @@ const provingGroundsTemplate = readSource('story-generator/src/app/proving-groun
 for (const [label, source, tables] of [
   [
     'the Story Lab blueprint form',
-    appComponent,
+    appPickerSource,
     [
       'CREATURE_ARCHETYPES',
       'NARRATIVE_TONES',
@@ -87,7 +95,7 @@ const adjacentPairs = [
 ] as const;
 
 for (const [label, source] of [
-  ['the Story Lab blueprint form', appComponent],
+  ['the Story Lab blueprint form', appPickerSource],
   ['the Proving Grounds', provingGroundsComponent]
 ] as const) {
   for (const [vocabulary, firstValue, secondValue] of adjacentPairs) {
