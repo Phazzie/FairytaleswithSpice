@@ -18,6 +18,9 @@ Status values:
 
 | PR | Planned action | Actual status | Notes |
 |---:|---|---|---|
+| #322 | rebase-and-merge (maintainer call) | pending | 35-advisory lockfile-only remediation; #318 (the Dependabot PR it unblocks) closed unmerged, replacement #327 repeats the same major-bump-bundling mistake. Status comment posted 2026-09-06; see "Stale-PR triage cycle" below. |
+| #316 | needs a human decision | pending | Bearer-token redaction rewrite; clean/green but its own description names two open decisions for the repo owner. Status comment posted 2026-09-06; see "Stale-PR triage cycle" below. |
+| #198 | close-as-superseded (maintainer call) | pending | Superseded by `STORY_LAB_LIVING_BOOK_AND_DURABLE_JOBS_EXEC_PLAN.md`, which already directs this PR be closed; branch also has unrelated git history vs. current `main`. Corrective comment posted 2026-09-06; see "Stale-PR triage cycle" below. |
 | #95 | merge | merged | Lockfile-only Dependabot PR updated Story Generator `picomatch` and `qs`, reducing full dev/test audit findings from seven to four. |
 | #88 | recreate/supersede | superseded; closed | Dependency-only Dependabot PR was superseded by fresher dependency updates in PR #94, then closed. |
 | #86 | merge | merged; closed | Merged design system doc; normalized nonzero letter-spacing tokens; closed as superseded by #87. |
@@ -1711,22 +1714,26 @@ None qualified for the "small and mechanical" auto-merge bar (single same-major 
 
 ### PR #198 - Plan Story Lab foundation and production completion
 
-- Status: `pending` (status comment posted, not merged or closed)
-- Disposition this cycle: Draft architecture/planning PR (2.3k lines). Verified `git merge-tree origin/main` against the branch fails with "refusing to merge unrelated histories" — the branch's root commit (`b75a9cd0...`) shares no ancestor with current `origin/main`'s root (`cab90894...`), so main's history was rewritten since this branch was cut and it cannot be merged, manually or otherwise. Also verified neither `STORY_LAB_FOUNDATION_AND_LIVING_BOOK_EXEC_PLAN.md` nor `STORY_LAB_PRODUCTION_COMPLETION_EXEC_PLAN.md` exists on `main` — the two-plan sequence this PR proposed to freeze was never adopted; `AGENTS.md`'s current operating direction routes through a different, more granular set of exec plans instead.
-- Why not closed here: architecture/planning documents are explicitly out of this routine's merge-or-close authority, and AGENTS.md requires accepted/not-taken material to be recorded before any close - a maintainer call.
-- Recommendation posted to the PR: close-as-superseded; re-propose any still-wanted material (`docs/EXTERNAL_REVIEW_POLICY.md`, the two `.agents/skills/fairytales-*` skills) as a fresh PR from current `main`.
+- Status: `pending` (open, in review; corrective comment posted, not merged or closed)
+- Disposition this cycle, corrected: `STORY_LAB_LIVING_BOOK_AND_DURABLE_JOBS_EXEC_PLAN.md` already supersedes this PR and is the authoritative source here (lines 8-10, 236, 280) — it records that PR #198's Plan 2 scope (Clerk-backed auth, rate limiting, per-user content boundaries, continuity tracking) already shipped via commit `cab9089` and related work, and it explicitly directs that PR #198 "should be closed with a comment pointing to this plan and noting which parts of its Plan 2 already shipped." My first pass here missed that plan and reasoned from the absence of PR #198's own filenames on `main` instead, which produced a correct disposition (close-as-superseded) for an incomplete reason. Separately confirmed the default `git merge-tree origin/main` check fails with "refusing to merge unrelated histories" (the branch's root commit `b75a9cd0...` shares no ancestor with current `origin/main`'s root `cab90894...`); that failure is real, but it does not itself prove the branch "cannot be merged, manually or otherwise" (`--allow-unrelated-histories` or manual porting remain technically possible) — it is corroborating evidence, not the reason for the disposition, which rests on the exec plan's already-recorded rationale.
+- Why not closed here: architecture/planning documents are explicitly out of this routine's merge-or-close authority for this cycle, even though the exec plan itself already calls for closure — that action is left to a maintainer or a future cycle.
+- Recommendation posted to the PR (corrective follow-up comment): close per `STORY_LAB_LIVING_BOOK_AND_DURABLE_JOBS_EXEC_PLAN.md`'s own instruction, citing what already shipped, rather than re-proposing the material as a new PR.
 - CI: `Validate Vercel recovery build` failed twice at the PR's last push (account billing lock, per the PR's own body); Vercel deploy and SonarCloud passed.
 
 ### PR #322 - 35 advisories cleared inside the ranges already declared (lockfile-only)
 
-- Status: `pending` (status comment posted, not merged)
+- Status: `pending` (open, in review; status comment posted, not merged)
 - Disposition this cycle: Confirmed the Dependabot PR this PR was written to unblock, #318, closed unmerged on 2026-09-03. Its Dependabot replacement, #327 (opened the same day), reintroduces the identical defect - bundling `@angular/*` 20.3.22 to 22.1.5 (a two-major jump) into the same group as unrelated patch/minor advisory fixes, the exact anti-pattern `AGENTS.md` line 218 warns against. So #322's narrower, manifest-untouched fix is still the live candidate for these advisories. `git merge-tree` against current `main` shows only a one-file conflict in `PR70_RECOVERY_CHANGELOG.md` (expected, already documented in the PR body as the same overlap #312/#313/#315/#316 have); both lockfiles apply cleanly. CI (Recovery CI, SonarCloud, Vercel) is green.
 - Why not merged here: this is a multi-package dependency bundle (npm update touched ~95+ resolutions across two lockfiles, four of them crossing a major version internally) - outside this routine's "single same-major dependency bump" auto-merge bar, even though no `package.json` range changed.
 - Recommendation posted to the PR: rebase-and-merge after a maintainer confirms, given #318's closure and #327 repeating its mistake.
 
 ### PR #316 - `redactBearerTokens` took the word after any standalone `bearer`
 
-- Status: `pending` (status comment posted, not merged)
+- Status: `pending` (open, in review; status comment posted, not merged)
 - Disposition this cycle: Base auto-retargeted to `main` now that #315 merged, as the PR anticipated. `git merge-tree` against current `main` shows no conflicts; CI (SonarCloud, Vercel) is green.
 - Why not merged here: 39 commits / 33 comments rewriting the credential-detection logic in `shared/sensitiveTextRedaction.ts`, with the PR's own description naming two explicit open decisions for the owner (the redaction residual's exact boundary; whether to require generated hex keys so the length-based rule can be dropped) plus a deliberately-unfixed known gap. Not small-and-mechanical and not this routine's call regardless of green CI.
 - Recommendation posted to the PR: needs a human decision from the repo owner on the two named open questions before merge.
+
+### Self-review addendum (Codex review on the ledger PR itself, #343)
+
+Codex's review of the PR carrying this ledger entry caught a real gap in the #198 disposition above (this section was corrected in place rather than left as originally written): `STORY_LAB_LIVING_BOOK_AND_DURABLE_JOBS_EXEC_PLAN.md` already superseded PR #198 with a recorded closure instruction, which the first pass here missed. It also caught an overclaim about `git merge-tree`'s unrelated-histories failure proving the branch un-mergeable by any means (softened above), stale `pending`-only status labels (clarified as "open, in review"), and a stale `#194` reference in `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md`'s Dependabot-triage slice that still pointed at a PR closed on 2026-08-28 (fixed directly in that file, pointing to #322/#327 instead). Codex also suggested duplicating this cycle's log into `PR70_RECOVERY_CHANGELOG.md`; not done, because the scheduling instructions for this specific routine direct it to log only here, to avoid merge conflicts with the separate hourly quick-wins routine that writes to the changelog every cycle — replied on that thread rather than applied.
