@@ -164,7 +164,13 @@ export class StoryLabProfilePanelComponent implements OnInit, AfterViewInit {
 
     this.storyService.getStoryLabProfile().subscribe({
       next: response => {
+        // Retries under whichever identity is current now, rather than
+        // discarding and leaving `loadState` stuck at `'loading'` forever:
+        // this is a `GET`, safe to repeat, and (unlike `save()`) there is no
+        // reader-entered data at risk of loading under the wrong account —
+        // only the read itself needs to be current.
         if (this.authService.sessionEpoch() !== requestEpoch) {
+          this.loadProfile();
           return;
         }
 
@@ -179,6 +185,7 @@ export class StoryLabProfilePanelComponent implements OnInit, AfterViewInit {
       },
       error: error => {
         if (this.authService.sessionEpoch() !== requestEpoch) {
+          this.loadProfile();
           return;
         }
 
@@ -252,11 +259,24 @@ export class StoryLabProfilePanelComponent implements OnInit, AfterViewInit {
 
     this.storyService.updateStoryLabProfile(profile).subscribe({
       next: response => {
+        // Always released, whether or not the response below turns out to
+        // be stale: a same-account token refresh mid-save advances
+        // `sessionEpoch` without changing `accountId`, and the round-2 fix
+        // deliberately keeps the panel open (not force-closed) for exactly
+        // that case — so if this lock stayed on only the non-stale branch,
+        // it would never come back off.
+        this.isSaving.set(false);
+
         if (this.authService.sessionEpoch() !== requestEpoch) {
+          // Unlike `loadProfile()`, this is a `PUT` — resubmitting the same
+          // edit blind isn't safe (the identity that would receive it may
+          // have changed), so this surfaces the ambiguity rather than either
+          // silently doing nothing (the reader would have no way to know
+          // whether their edit actually landed) or retrying automatically.
+          this.saveError.set('Your session changed while saving. Please review and save again to be sure.');
           return;
         }
 
-        this.isSaving.set(false);
         if (!response.success || !response.data) {
           this.saveError.set(response.error?.message ?? 'Could not save your Story Lab profile.');
           return;
@@ -266,11 +286,13 @@ export class StoryLabProfilePanelComponent implements OnInit, AfterViewInit {
         this.saved.emit(response.data);
       },
       error: error => {
+        this.isSaving.set(false);
+
         if (this.authService.sessionEpoch() !== requestEpoch) {
+          this.saveError.set('Your session changed while saving. Please review and save again to be sure.');
           return;
         }
 
-        this.isSaving.set(false);
         this.saveError.set(extractApiErrorMessage(error, 'Could not save your Story Lab profile.'));
       }
     });

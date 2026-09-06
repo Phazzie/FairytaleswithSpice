@@ -1556,6 +1556,63 @@ describe('App', () => {
     expect(storyService.getStoryLabProfile).not.toHaveBeenCalled();
   });
 
+  // Before this, `storyLabProfileDefaultsFetchedForAccountId` was set once
+  // and never cleared, so signing out and back in as the *same* account
+  // within one session skipped the fetch entirely — any profile changes
+  // made elsewhere between the two sign-ins would never load.
+  it('refetches after a sign-out and sign-in as the same account', () => {
+    storyService.getStoryLabProfile.and.returnValue(of({ success: true, data: createStoryLabProfile() }));
+
+    component.syncStoryLabProfileDefaultsWithAuthState(true, 'user-owner');
+    component.syncStoryLabProfileDefaultsWithAuthState(false, null);
+    component.syncStoryLabProfileDefaultsWithAuthState(true, 'user-owner');
+
+    expect(storyService.getStoryLabProfile).toHaveBeenCalledTimes(2);
+  });
+
+  // A failed background fetch must not throw into Jasmine's unhandled-error
+  // path — `StoryService`'s HTTP methods reject the observable on failure,
+  // so this subscription needs its own `error` callback.
+  it('does not throw when the background profile fetch fails', () => {
+    storyService.getStoryLabProfile.and.returnValue(throwError(() => new Error('network down')));
+
+    expect(() => component.syncStoryLabProfileDefaultsWithAuthState(true, 'user-owner')).not.toThrow();
+  });
+
+  // Before this, any defaults application — whether from a sign-in or a
+  // profile save — would silently overwrite a creature/tone/heat-contract
+  // the reader had already picked in the still-blank blueprint.
+  describe('blueprintTouchedByReader guard', () => {
+    it('blocks sign-in-time defaults once the reader has edited the blueprint', () => {
+      storyService.getStoryLabProfile.and.returnValue(of({ success: true, data: createStoryLabProfile() }));
+      component.updateBlueprint('creature', 'dragon');
+
+      component.syncStoryLabProfileDefaultsWithAuthState(true, 'user-owner');
+
+      expect(component.blueprint().creature).toBe('dragon');
+    });
+
+    it('blocks save-time defaults once the reader has edited the blueprint', () => {
+      storyService.listCloudStoryProjects.and.returnValue(of({
+        success: true,
+        data: { ownerUserId: 'user-test', storageMode: 'non_durable_memory', projects: [], totalProjectCount: 0 }
+      }));
+      component.updateBlueprint('creature', 'dragon');
+
+      component.onStoryLabProfileSaved(createStoryLabProfile());
+
+      expect(component.blueprint().creature).toBe('dragon');
+    });
+
+    it('still applies defaults for an untouched blueprint', () => {
+      storyService.getStoryLabProfile.and.returnValue(of({ success: true, data: createStoryLabProfile() }));
+
+      component.syncStoryLabProfileDefaultsWithAuthState(true, 'user-owner');
+
+      expect(component.blueprint().creature).toBe('witch');
+    });
+  });
+
   it('keeps non-durable loaded projects out of cloud-synced state', () => {
     const payload = seedWorkbenchForContinuation({
       summary: createSummary({ storyId: 'story-cloud', title: 'Cloud Chapel' }),
