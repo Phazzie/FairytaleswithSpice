@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ***WORST TO BEST*** Proving Grounds evaluation fallback — a fixed placeholder score/feedback regardless of what story was submitted (September 7, 2026)
+
+- Proving Grounds exists to A/B compare prompt variants by their evaluation score. Whenever
+  `/api/story-lab/evaluate` failed for any reason on the client — a network error, the endpoint's
+  own rate limit (plausible during exactly the back-to-back evaluations an A/B session runs), a
+  400/401/502 refusal — `PromptEvaluationService.getMockEvaluation()` substituted five hardcoded
+  constants: score `75`, the same three strengths, weaknesses, and suggestions, and the same
+  feedback sentence, verbatim, no matter what story content was submitted. Two different prompt
+  variants hitting this fallback were indistinguishable, silently defeating the comparison the tool
+  exists to make.
+- The server already had a better answer for its own "no `XAI_API_KEY`" mock path: it attaches a
+  real `heuristicReport` — a deterministic 7-dimension scan of the actual submitted story
+  (`buildStoryQualityHeuristicReport`) — computed by `api/_lib/story-lab/evaluation/storyQualityHeuristics.ts`.
+  That module lived in a Node-only tree the Angular client cannot import, so the client's own
+  fallback (triggered far more often — any failure, not just a missing key) had no equivalent and
+  stayed static.
+- Moved `buildStoryQualityHeuristicReport` — and its three pure-string dependencies
+  `collapseWhitespace`, `escapeRegExp`, and `wholeWordPattern`/`wholeWordAlternationPattern` — into
+  `shared/`, alongside the `StoryQualityDimensionId`/`StoryQualityDimensionScore`/
+  `StoryQualityHeuristicReport` types (previously declared inline in the frontend's `contracts.ts`).
+  This follows the repo's existing convention for logic used by both the server and the client
+  (`shared/storyTextBlocks.ts`, `shared/wordInflections.ts`). Updated the resulting import sites in
+  `continuationGuidance.ts`, `storyContentAnalysis.ts`, `storyService.ts`, `cliffhangerService.ts`,
+  `storyLabEngine.ts`, `storyStateBuilder.ts`, `evaluate.ts`, and three test files — mechanical path
+  changes, no behavior change to any of them.
+- `PromptEvaluationService.getMockEvaluation()` now runs `buildStoryQualityHeuristicReport` against
+  the actual submitted story and configuration: `score` comes from the report's `overallScore`,
+  `strengths`/`weaknesses` are the highest/lowest-scoring dimensions with their real rationale, and
+  `suggestions` are phrased as actionable improvements on the weakest ones. `heuristicReport` is now
+  attached on the client fallback too, matching the server's own mock path. `overallFeedback` names
+  that no AI evaluation was available rather than describing a story it never read.
+- Added a test asserting two different stories produce different fallback scores/strengths (the
+  concrete regression this closes), and a test asserting the fallback's `heuristicReport`/`score`
+  match a direct call to `buildStoryQualityHeuristicReport` for the same input. The existing
+  determinism test (same story → same fallback content) and the `isMockEvaluation`/
+  `mockEvaluationReason` tests are unchanged and still pass.
+
+No change to the real Grok-backed evaluation path, the server's own mock response shape, or any
+HTML/template — `heuristicReport`/`score` were already rendered wherever present.
+
+#### Validation
+
+- `npm run test:all` (backend, 90+ suites) exits `0`.
+- `npx tsc --noEmit -p tsconfig.app.json` and `-p tsconfig.spec.json` (frontend) both clean.
+- `ng test --watch=false --browsers=ChromeHeadlessNoSandbox` (frontend unit suite) green.
+
 ### ***WORST TO BEST*** `TropeSubversionService` — a third of its surface was dead code, untested config, or more machinery than the job needed (September 7, 2026)
 
 - `getAllTropesForCreature()` and `getTropeStatistics()` had zero callers anywhere in the repo,

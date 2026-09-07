@@ -18,7 +18,7 @@ import type {
   StoryStateDelta,
   StoryStateSnapshot
 } from './contracts';
-import { collapseWhitespace } from '../utils/whitespace';
+import { collapseWhitespace } from '../../../shared/whitespace';
 
 const WORLD_ARTIFACT_MAX_NAME_WORDS = 4;
 
