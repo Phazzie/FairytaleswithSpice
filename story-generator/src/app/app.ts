@@ -1194,6 +1194,7 @@ export class App implements OnDestroy {
   }
 
   updateBlueprint<K extends keyof BlueprintForm>(field: K, value: BlueprintForm[K]) {
+    this.blueprintTouchedByReader = true;
     this.blueprint.update(current => ({
       ...current,
       [field]: value
@@ -1201,6 +1202,7 @@ export class App implements OnDestroy {
   }
 
   updateHeatContract<K extends keyof HeatContract>(field: K, value: HeatContract[K]) {
+    this.blueprintTouchedByReader = true;
     this.blueprint.update(current => ({
       ...current,
       heatContract: {
@@ -1215,6 +1217,7 @@ export class App implements OnDestroy {
   }
 
   toggleTheme(theme: ThemeSeed) {
+    this.blueprintTouchedByReader = true;
     const current = this.blueprint();
     const isSelected = current.themes.some(item => item.id === theme.id);
     const updatedThemes = isSelected
@@ -1932,22 +1935,37 @@ export class App implements OnDestroy {
     this.refreshCloudLibrary();
   }
 
+  // Set by `updateBlueprint`/`updateHeatContract`/`toggleTheme` — the only
+  // three mutators every template control funnels through — and never
+  // cleared. A permanent latch rather than one scoped to an account or
+  // story: an explicit edit should outrank any defaults for as long as the
+  // edited blueprint exists, and nothing in this app resets blueprint field
+  // values on its own. Non-claim: editing under one account then switching
+  // to another in the same tab leaves this latched, so the new account's
+  // own defaults won't apply either — accepted rather than adding
+  // per-account scoping for a rare edge case.
+  private blueprintTouchedByReader = false;
+
   /**
    * Seeds the still-blank blueprint from the profile's saved defaults —
    * favorite creature/tone and default heat contract — the moment they're
-   * saved. Before this, PR70_RECOVERY_CHANGELOG.md recorded these three
-   * fields as "stored, validated, redacted and persisted with no reader in
-   * either tree" — the profile panel this method backs made them editable,
-   * but editable is not applied, and a "default" nothing ever reads is the
-   * same false affordance the "Profile" button itself used to be.
+   * saved, or once per sign-in for a returning reader (see
+   * `syncStoryLabProfileDefaultsWithAuthState`). Before this,
+   * PR70_RECOVERY_CHANGELOG.md recorded these three fields as "stored,
+   * validated, redacted and persisted with no reader in either tree" — the
+   * profile panel this method backs made them editable, but editable is not
+   * applied, and a "default" nothing ever reads is the same false
+   * affordance the "Profile" button itself used to be.
    *
-   * Only applies before a story exists in this session: once
-   * `workbench().story` is set the reader is mid-story, and silently
-   * rewriting the heat contract or creature underneath them because they
-   * happened to update their profile would be its own bug.
+   * Two guards, both required: `workbench().story` set means the reader is
+   * mid-story, and `blueprintTouchedByReader` means they have already
+   * picked something in the still-blank blueprint — silently rewriting
+   * either because they happened to sign in or save their profile would be
+   * its own bug (a save of, say, just `librarySort` should not also stomp a
+   * creature the reader already chose).
    */
   private applyStoryLabProfileDefaults(profile: StoryLabUserProfile): void {
-    if (this.workbench().story) {
+    if (this.workbench().story || this.blueprintTouchedByReader) {
       return;
     }
 
@@ -1961,34 +1979,59 @@ export class App implements OnDestroy {
   }
 
   // A plain field, not a signal — tracking it in the constructor effect
-  // above would make it a dependency of that same effect, so this method's
-  // own write to it (on every fetch it starts) would immediately retrigger
-  // the effect. Records which account's profile defaults have already been
-  // fetched this session, so an ordinary token refresh under the same
-  // account does not refetch on every rerun, while an account switch (a
-  // different id) does.
+  // above would make it a dependency of that effect, retriggering it on
+  // every write. Records which account's defaults have already been
+  // fetched this session, so an ordinary refresh doesn't refetch but an
+  // account switch does. Cleared on sign-out so a later sign-in — even as
+  // the same account — fetches again rather than staying latched.
   private storyLabProfileDefaultsFetchedForAccountId: string | null = null;
 
   /**
-   * The other half of the fix `onStoryLabProfileSaved` makes for the moment
-   * of saving: without this, a returning signed-in user's saved
-   * `favoriteCreatures`/`favoriteTones`/`defaultHeatContract` were only ever
-   * applied if they opened the profile panel and saved again in the same
-   * session — a fresh sign-in on a later visit still used the hard-coded
-   * defaults until then. Fetches at most once per signed-in account; a
-   * failed fetch is left silent (the same hard-coded defaults it would have
-   * replaced), since this is a background convenience, not a load-bearing
-   * request the reader is waiting on.
+   * The other half of `onStoryLabProfileSaved`'s fix: without this, a
+   * returning signed-in reader's saved defaults were only ever applied if
+   * they reopened the profile panel and saved again — a fresh sign-in on a
+   * later visit still used hard-coded defaults. Fetches at most once per
+   * signed-in account.
+   *
+   * Guards against `AuthService.sessionEpoch()` moving between request and
+   * response, like `CloudLibraryService` and the panel's own `loadProfile`/
+   * `save` already do, so one account's fetch can't apply its defaults
+   * (including private `noGoContent`) under whoever is signed in by the
+   * time it resolves. Unlike those two, a stale response here retries under
+   * the current identity rather than discarding: a `GET` is safe to repeat,
+   * and this method runs at most once per account, so a discarded attempt
+   * would otherwise never retry this session. A failed fetch is left silent
+   * — already logged by `StoryService.handleHttpError` — since this is a
+   * background convenience, not a request the reader is waiting on.
    */
   syncStoryLabProfileDefaultsWithAuthState(signedIn: boolean, accountId: string | null): void {
-    if (!signedIn || accountId === null || accountId === this.storyLabProfileDefaultsFetchedForAccountId) {
+    if (!signedIn || accountId === null) {
+      this.storyLabProfileDefaultsFetchedForAccountId = null;
+      return;
+    }
+
+    if (accountId === this.storyLabProfileDefaultsFetchedForAccountId) {
       return;
     }
 
     this.storyLabProfileDefaultsFetchedForAccountId = accountId;
-    this.storyService.getStoryLabProfile().subscribe(response => {
-      if (response.success && response.data) {
-        this.applyStoryLabProfileDefaults(response.data);
+    const requestEpoch = this.authService.sessionEpoch();
+
+    this.storyService.getStoryLabProfile().subscribe({
+      next: response => {
+        if (this.authService.sessionEpoch() !== requestEpoch) {
+          this.storyLabProfileDefaultsFetchedForAccountId = null;
+          this.syncStoryLabProfileDefaultsWithAuthState(this.authService.isSignedIn(), this.authService.accountId());
+          return;
+        }
+
+        if (response.success && response.data) {
+          this.applyStoryLabProfileDefaults(response.data);
+        }
+      },
+      error: () => {
+        // Already logged by `StoryService.handleHttpError` — nothing further
+        // to do for a best-effort background fetch.
       }
     });
   }

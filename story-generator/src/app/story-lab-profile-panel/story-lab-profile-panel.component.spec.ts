@@ -164,18 +164,30 @@ describe('StoryLabProfilePanelComponent', () => {
   // in another tab) must never populate the UI with another account's data —
   // including the free-text "no-go content" notes this profile carries.
   describe('account-identity staleness guard', () => {
-    it('discards a load response that arrives after the session epoch changes', () => {
+    // Retries under the new epoch rather than leaving `loadState` stuck at
+    // `'loading'` forever — a `GET` is safe to repeat, unlike a save.
+    it('retries a load response that arrives after the session epoch changes', () => {
       fixture.detectChanges();
-      const request = httpMock.expectOne('/api/story-lab/account/profile');
+      const firstRequest = httpMock.expectOne('/api/story-lab/account/profile');
 
       sessionEpoch.set(1);
-      request.flush({ success: true, data: createProfile() });
+      firstRequest.flush({ success: true, data: createProfile() });
 
       expect(component.loadState()).toBe('loading');
       expect(component.profile()).toBeNull();
+
+      const retryRequest = httpMock.expectOne('/api/story-lab/account/profile');
+      retryRequest.flush({ success: true, data: createProfile() });
+
+      expect(component.loadState()).toBe('loaded');
+      expect(component.profile()).not.toBeNull();
     });
 
-    it('discards a save response that arrives after the session epoch changes', () => {
+    // Unlike `loadProfile()`, a stale save response is not retried — this is
+    // a `PUT`, and resubmitting an edit under a possibly-different identity
+    // isn't safe. The lock still releases and the reader is told to check,
+    // rather than either staying stuck or being silently told nothing.
+    it('releases the save lock and reports ambiguity when the response arrives after the session epoch changes', () => {
       fixture.detectChanges();
       httpMock.expectOne('/api/story-lab/account/profile').flush({ success: true, data: createProfile() });
 
@@ -187,6 +199,8 @@ describe('StoryLabProfilePanelComponent', () => {
       sessionEpoch.set(1);
       putRequest.flush({ success: true, data: createProfile({ librarySort: 'title_asc' }) });
 
+      expect(component.isSaving()).toBeFalse();
+      expect(component.saveError()).toContain('session changed');
       expect(savedSpy).not.toHaveBeenCalled();
     });
   });
