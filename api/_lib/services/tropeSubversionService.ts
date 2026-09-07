@@ -14,7 +14,6 @@ export interface TropeSelection {
 export interface TropeSubversionOptions {
   creature: TropeCreatureType;
   preferredIntensity?: Trope['intensity'];
-  avoidCategories?: Trope['category'][];
   tropeCount?: number;
 }
 
@@ -37,7 +36,7 @@ export class TropeSubversionService {
   }
 
   selectTropesForSubversion(options: TropeSubversionOptions): TropeSelection {
-    const { creature, preferredIntensity, avoidCategories = [], tropeCount } = options;
+    const { creature, preferredIntensity, tropeCount } = options;
     const creatureTropes = TROPE_DATABASE[creature];
 
     if (!creatureTropes) {
@@ -45,7 +44,7 @@ export class TropeSubversionService {
     }
 
     const targetCount = tropeCount ?? this.getRandomTropeCount();
-    const tropePool = this.createWeightedTropePool(creatureTropes, avoidCategories);
+    const tropePool = this.createWeightedTropePool(creatureTropes);
     const selectedTropes = this.selectRandomTropes(tropePool, targetCount, preferredIntensity);
 
     return {
@@ -88,8 +87,7 @@ export class TropeSubversionService {
   serializeTropeSelection(tropeSelection: TropeSelection): string {
     return JSON.stringify({
       creature: tropeSelection.creature,
-      tropeIds: tropeSelection.selectedTropeIds,
-      timestamp: Date.now()
+      tropeIds: tropeSelection.selectedTropeIds
     });
   }
 
@@ -126,53 +124,20 @@ export class TropeSubversionService {
     }
   }
 
-  getAllTropesForCreature(creature: TropeCreatureType) {
-    return TROPE_DATABASE[creature];
-  }
-
-  getTropeStatistics(creature: TropeCreatureType): {
-    commonCount: number;
-    subversiveCount: number;
-    totalCount: number;
-    categoryCounts: Record<string, number>;
-  } {
-    const creatureTropes = TROPE_DATABASE[creature];
-    const allTropes = [...creatureTropes.common, ...creatureTropes.subversive];
-    const categoryCounts: Record<string, number> = {};
-
-    allTropes.forEach(trope => {
-      categoryCounts[trope.category] = (categoryCounts[trope.category] || 0) + 1;
-    });
-
-    return {
-      commonCount: creatureTropes.common.length,
-      subversiveCount: creatureTropes.subversive.length,
-      totalCount: allTropes.length,
-      categoryCounts
-    };
-  }
-
   private getRandomTropeCount(): number {
     return randomInt(this.minTropes, this.maxTropes + 1);
   }
 
-  private createWeightedTropePool(
-    creatureTropes: { common: Trope[]; subversive: Trope[] },
-    avoidCategories: Trope['category'][]
-  ): Trope[] {
+  private createWeightedTropePool(creatureTropes: { common: Trope[]; subversive: Trope[] }): Trope[] {
     const pool: Trope[] = [];
 
-    creatureTropes.common
-      .filter(trope => !avoidCategories.includes(trope.category))
-      .forEach(trope => {
-        pool.push(trope, trope, trope);
-      });
+    creatureTropes.common.forEach(trope => {
+      pool.push(trope, trope, trope);
+    });
 
-    creatureTropes.subversive
-      .filter(trope => !avoidCategories.includes(trope.category))
-      .forEach(trope => {
-        pool.push(trope);
-      });
+    creatureTropes.subversive.forEach(trope => {
+      pool.push(trope);
+    });
 
     return pool;
   }
@@ -183,7 +148,6 @@ export class TropeSubversionService {
     preferredIntensity?: Trope['intensity']
   ): Trope[] {
     const selected: Trope[] = [];
-    const usedIds = new Set<string>();
     const preferredPool = preferredIntensity
       ? pool.filter(trope => trope.intensity === preferredIntensity)
       : [...pool];
@@ -194,22 +158,14 @@ export class TropeSubversionService {
     // pool that held one trope three times, and the caller asking for two
     // tropes then got one: the loop drains every copy of the only id it has and
     // never reaches the wider pool that could have completed the selection.
-    const activePool = countDistinctTropes(preferredPool) >= count ? preferredPool : fallbackPool;
+    let remainingPool = countDistinctTropes(preferredPool) >= count ? preferredPool : fallbackPool;
 
-    while (selected.length < count && activePool.length > 0) {
-      const randomIndex = randomInt(activePool.length);
-      const selectedTrope = activePool[randomIndex];
+    while (selected.length < count && remainingPool.length > 0) {
+      const randomIndex = randomInt(remainingPool.length);
+      const selectedTrope = remainingPool[randomIndex];
 
-      if (!usedIds.has(selectedTrope.id)) {
-        selected.push(selectedTrope);
-        usedIds.add(selectedTrope.id);
-      }
-
-      for (let i = activePool.length - 1; i >= 0; i--) {
-        if (activePool[i].id === selectedTrope.id) {
-          activePool.splice(i, 1);
-        }
-      }
+      selected.push(selectedTrope);
+      remainingPool = remainingPool.filter(trope => trope.id !== selectedTrope.id);
     }
 
     return selected;

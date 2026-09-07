@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ***WORST TO BEST*** `TropeSubversionService` — a third of its surface was dead code, untested config, or more machinery than the job needed (September 7, 2026)
+
+- `getAllTropesForCreature()` and `getTropeStatistics()` had zero callers anywhere in the repo,
+  including their own test file. Not a new finding: `PR70_RECOVERY_CHANGELOG.md` already flagged
+  both, plus the unread `timestamp` field below, as dead surface while tracing an unrelated trope-count
+  bug, filed as "the shape of #281" and never actioned. Both are now deleted.
+- `serializeTropeSelection` wrote a `timestamp` that `deserializeTropeSelection` never read — dead
+  data shipped on every serialized selection (persisted in every generated story's `tropeMetadata`).
+  Removed.
+- `avoidCategories` (on `TropeSubversionOptions` and `createWeightedTropePool`) had zero production
+  callers — `StoryService.selectTropeSubversions`, the only real caller, passes just `creature` — and
+  zero test coverage. Unlike `preferredIntensity`, which a dedicated regression test guards against a
+  real historical bug, nobody would have noticed `avoidCategories` silently breaking. Removed.
+- `selectRandomTropes` removed every duplicate of a drawn trope id with a manual reverse `for` +
+  `splice`, nested inside the outer `while` — more machinery than a "remove all copies of this id"
+  job needs. Replaced with a single `.filter()` pass per draw; same behavior, no nested-loop shape.
+- Added a direct assertion to `tests/trope-subversion.test.ts` that a serialized selection no longer
+  carries a `timestamp` key. The existing suite already asserted on selection count/distinctness
+  rather than the removal mechanism, so it validates the `selectRandomTropes` refactor unchanged.
+
+Scope stayed inside `tropeSubversionService.ts` and its test file — nothing outside the service read
+any of the removed surface.
+
+#### Validation
+
+- `npm run test:tropes` and `npm run test:all` both exit `0`.
+
 ### ***WORST TO BEST*** `ImageService` — silently served fake stock photos as "AI art" in production when `XAI_API_KEY` was missing (September 7, 2026)
 
 - This repo's rule for a missing provider key on a paid-generation service — `StoryService`,
