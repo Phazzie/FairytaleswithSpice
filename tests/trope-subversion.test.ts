@@ -96,6 +96,10 @@ for (const creature of Object.keys(TROPE_DATABASE) as Array<keyof typeof TROPE_D
   assert(restored !== null, `${creature}: serialized selection should restore`);
   assert(restored.creature === creature, `${creature}: restored creature should match`);
   assert(restored.selectedTropeIds.length === selection.selectedTropeIds.length, `${creature}: restored ids should match`);
+  assert(
+    !Object.prototype.hasOwnProperty.call(JSON.parse(serialized), 'timestamp'),
+    `${creature}: serialized selection should not carry a timestamp nothing ever reads`
+  );
 }
 
 // The selection pool is weighted by repetition, so its length counts copies
