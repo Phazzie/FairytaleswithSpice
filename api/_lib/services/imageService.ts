@@ -230,6 +230,11 @@ export class ImageService {
     this.grokApiUrl = 'https://api.x.ai/v1/images/generations';
   }
 
+  /** See `StoryService.isProductionRuntime`/`storyLabEngine.isProductionRuntime`/`AudioService.isProductionRuntime`: the same check, for the same reason. */
+  private isProductionRuntime(): boolean {
+    return process.env['NODE_ENV'] === 'production' || process.env['VERCEL_ENV'] === 'production';
+  }
+
   /**
    * Generates an image based on story content using Grok-2-Image
    */
@@ -244,6 +249,26 @@ export class ImageService {
     const correlationId = this.resolveRequestId(requestId);
 
     try {
+      // `StoryService`/`storyLabEngine`/`AudioService` established this repo's
+      // rule for a missing provider key — `STORY_LAB_CHARMED_MVP_EXEC_PLAN.md`:
+      // "stop production-capable routes from silently returning mock prose
+      // when [the provider key] is missing" — and `ImageService` was the one
+      // paid-generation service still doing exactly that: a production
+      // deployment with no `XAI_API_KEY` answered every "Chapter Illustration"
+      // request with a random `picsum.photos` stock photo reported as
+      // `success: true`, next to the real scene prompt. Checked once, up
+      // front, the same as the other three services check it.
+      if (!this.grokApiKey && this.isProductionRuntime()) {
+        return {
+          success: false,
+          error: {
+            code: 'AI_UNAVAILABLE',
+            message: 'Grok image generation is not configured for this deployment. Set XAI_API_KEY before generating chapter illustrations.'
+          },
+          metadata: { requestId: correlationId, processingTime: Date.now() - startTime }
+        };
+      }
+
       // Validate input
       const validationError = this.validateImageInput(input);
       if (validationError) {
