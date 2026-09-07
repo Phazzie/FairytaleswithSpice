@@ -34,7 +34,7 @@ import {
   stripStoryMemoryCardSections
 } from './continuationGuidance';
 import { buildChapterDelta, buildStateDelta, buildStateSnapshot, deriveContinuityDelta } from './storyStateBuilder';
-import { collapseWhitespace } from '../utils/whitespace';
+import { collapseWhitespace } from '../../../shared/whitespace';
 import { stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
 import { STORY_BLUEPRINT_LIMITS } from '../../../shared/storyBlueprintLimits';
 

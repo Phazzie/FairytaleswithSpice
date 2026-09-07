@@ -3,6 +3,9 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { ApiResponse, EvaluationCriteria, EvaluationRequest } from '../contracts';
+import { buildStoryQualityHeuristicReport, StoryQualityDimensionScore } from '../../../../shared/storyQualityHeuristics';
+
+const FALLBACK_DIMENSION_COUNT = 3;
 
 @Injectable({
   providedIn: 'root'
@@ -20,41 +23,64 @@ export class PromptEvaluationService {
         return response.data;
       }
 
-      return this.getMockEvaluation(readEvaluationRefusal(response));
+      return this.getMockEvaluation(request, readEvaluationRefusal(response));
     } catch (error) {
       console.warn('Server-side evaluation unavailable; using local mock evaluation.', error);
-      return this.getMockEvaluation(readEvaluationRefusal((error as { error?: unknown } | null)?.error));
+      return this.getMockEvaluation(request, readEvaluationRefusal((error as { error?: unknown } | null)?.error));
     }
   }
 
   /**
+   * The evaluation this service can honestly offer when `/api/story-lab/evaluate`
+   * did not answer with a real one.
+   *
+   * This used to be five constants — the same score, the same three strengths,
+   * the same three weaknesses, the same three suggestions, the same feedback
+   * sentence, for every story, every time. Proving Grounds exists to A/B compare
+   * two prompt variants by their evaluation, and the two most likely reasons
+   * this fallback fires — the endpoint's own rate limit, tripped by exactly the
+   * back-to-back evaluations an A/B session runs, and a missing `XAI_API_KEY` on
+   * a preview deployment — are not rare. A reader hitting either saw two
+   * variants score identically and read the tie as a result.
+   *
+   * `buildStoryQualityHeuristicReport` is the deterministic per-story scan the
+   * server already attaches to every response, real or mocked, as
+   * `heuristicReport` — moved to `shared/` so this client-side fallback can run
+   * the exact same scan against the exact same story, rather than reaching for
+   * static prose because the real scan lived in a Node-only tree. `score`,
+   * `strengths`, and `weaknesses` are now read from it, so two different
+   * variants produce two different placeholders instead of one indistinguishable
+   * one.
+   *
    * @param reason What the route said about why it would not evaluate, when it
    * said anything. Carried onto the placeholder so the page can print it: see
    * `EvaluationCriteria.mockEvaluationReason`.
    */
-  private getMockEvaluation(reason?: string): EvaluationCriteria {
+  private getMockEvaluation(request: EvaluationRequest, reason?: string): EvaluationCriteria {
+    const heuristicReport = buildStoryQualityHeuristicReport(request);
+    const rankedDimensions = [...heuristicReport.dimensions].sort((left, right) => right.score - left.score);
+    const strongestDimensions = rankedDimensions.slice(0, FALLBACK_DIMENSION_COUNT);
+    const weakestDimensions = rankedDimensions.slice(-FALLBACK_DIMENSION_COUNT).reverse();
+
     return {
       ...(reason ? { mockEvaluationReason: reason } : {}),
-      score: 75,
-      strengths: [
-        'Strong opening hook that captures attention',
-        'Good sensory details throughout',
-        'Effective pacing with appropriate tension building'
-      ],
-      weaknesses: [
-        'Some dialogue feels generic or repetitive',
-        'Voice descriptors could be more unique and varied',
-        'Cliffhanger could be more impactful'
-      ],
-      suggestions: [
-        'Use more unconventional voice descriptors such as texture plus mood combinations',
-        'Vary dialogue patterns between characters for distinct voices',
-        'Strengthen the final scene to increase stakes and reader investment'
-      ],
-      overallFeedback: 'Solid story with good fundamentals. The pacing works well and sensory details are effective. Main area for improvement is making character voices more distinct and memorable.',
+      score: heuristicReport.overallScore,
+      strengths: strongestDimensions.map(describeDimension),
+      weaknesses: weakestDimensions.map(describeDimension),
+      suggestions: weakestDimensions.map(suggestImprovement),
+      overallFeedback: `No AI evaluation is available right now, so this reflects only the deterministic heuristic scan: ${heuristicReport.summary}`,
+      heuristicReport,
       isMockEvaluation: true
     };
   }
+}
+
+function describeDimension(dimension: StoryQualityDimensionScore): string {
+  return `${dimension.label} (${dimension.score}/100): ${dimension.rationale}`;
+}
+
+function suggestImprovement(dimension: StoryQualityDimensionScore): string {
+  return `Strengthen ${dimension.label.toLowerCase()} — ${dimension.rationale}`;
 }
 
 /**

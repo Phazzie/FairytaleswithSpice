@@ -18,9 +18,9 @@ import type {
   PlotThread,
   StoryStateSnapshot
 } from './contracts';
-import { collapseWhitespace } from '../utils/whitespace';
+import { collapseWhitespace } from '../../../shared/whitespace';
 import { capAtWordBoundaryWithinCodeUnits } from '../utils/textExcerpt';
-import { wholeWordAlternationPattern } from '../utils/wholeWord';
+import { wholeWordAlternationPattern } from '../../../shared/wholeWord';
 import {
   formatThreadDebtLabel,
   normalizeActivationText,

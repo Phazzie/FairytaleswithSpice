@@ -21,7 +21,7 @@ import {
 } from '../../../shared/htmlTagScanner';
 import { stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
 import { capAtWordBoundary, tailAtWordBoundary } from '../utils/textExcerpt';
-import { wholeWordAlternationPattern, wholeWordPattern } from '../utils/wholeWord';
+import { wholeWordAlternationPattern, wholeWordPattern } from '../../../shared/wholeWord';
 
 /** The longest `nextChapterHint`, in code points. */
 export const NEXT_CHAPTER_HINT_MAX_LENGTH = 200;

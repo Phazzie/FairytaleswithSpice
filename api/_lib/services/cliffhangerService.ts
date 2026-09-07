@@ -3,8 +3,8 @@
 
 import { CliffhangerAnalysis, CliffhangerType } from '../types/contracts';
 import { splitStoryIntoTextBlocks } from '../../../shared/storyTextBlocks';
-import { collapseWhitespace } from '../utils/whitespace';
-import { wholeWordAlternationPattern } from '../utils/wholeWord';
+import { collapseWhitespace } from '../../../shared/whitespace';
+import { wholeWordAlternationPattern } from '../../../shared/wholeWord';
 
 /**
  * The hook words and phrases each kind of cliffhanger is recognised by, and the

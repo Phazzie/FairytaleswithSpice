@@ -25,8 +25,8 @@ import {
   extractSpicyLevelFromContent,
   extractThemesFromContent
 } from '../api/_lib/services/storyContentAnalysis';
-import { buildStoryQualityHeuristicReport } from '../api/_lib/story-lab/evaluation/storyQualityHeuristics';
-import { wholeWordPattern } from '../api/_lib/utils/wholeWord';
+import { buildStoryQualityHeuristicReport } from '../shared/storyQualityHeuristics';
+import { wholeWordPattern } from '../shared/wholeWord';
 import { assert } from './assert';
 
 /**

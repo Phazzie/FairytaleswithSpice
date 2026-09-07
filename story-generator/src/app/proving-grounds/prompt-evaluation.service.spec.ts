@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
 import { EvaluationCriteria, EvaluationRequest } from '../contracts';
 import { PromptEvaluationService } from './prompt-evaluation.service';
+import { buildStoryQualityHeuristicReport } from '../../../../shared/storyQualityHeuristics';
 
 describe('PromptEvaluationService', () => {
   let service: PromptEvaluationService;
@@ -50,17 +51,51 @@ describe('PromptEvaluationService', () => {
     expect(result.isMockEvaluation).toBeUndefined();
   });
 
-  it('falls back to a clearly-marked mock evaluation when the API call errors', async () => {
+  it('falls back to a mock evaluation built from a real heuristic scan of the submitted story', async () => {
     const evaluationPromise = service.evaluateStory(request);
 
     const req = httpMock.expectOne('/api/story-lab/evaluate');
     req.error(new ProgressEvent('network error'), { status: 0, statusText: 'Unknown Error' });
 
     const result = await evaluationPromise;
+    const expectedHeuristicReport = buildStoryQualityHeuristicReport(request);
 
     expect(result.isMockEvaluation).toBeTrue();
-    expect(result.score).toBe(75);
+    expect(result.score).toBe(expectedHeuristicReport.overallScore);
+    expect(result.heuristicReport).toEqual(expectedHeuristicReport);
     expect(result.strengths.length).toBeGreaterThan(0);
+    expect(result.weaknesses.length).toBeGreaterThan(0);
+    expect(result.suggestions.length).toBeGreaterThan(0);
+  });
+
+  // The whole point of Proving Grounds is comparing two variants by score. A
+  // fallback that returned the same five constants regardless of input made
+  // that comparison meaningless whenever `/api/story-lab/evaluate` failed —
+  // which the endpoint's own rate limit makes likely during exactly the
+  // back-to-back evaluations an A/B session runs. Two different stories must
+  // now produce two different placeholders.
+  it('scores two different stories differently through the fallback', async () => {
+    const shortStory: EvaluationRequest = {
+      ...request,
+      storyContent: '<p>A door creaked.</p>'
+    };
+    const richStory: EvaluationRequest = {
+      ...request,
+      storyContent: `<p>[Elena]: "I kept the vow," she said, pressing the bargained blade into his palm.</p>
+        <p>The court fell silent. A secret, once hidden, now cost them both.</p>
+        <p>Would he choose the truth, or the danger that followed it?</p>`
+    };
+
+    const firstPromise = service.evaluateStory(shortStory);
+    httpMock.expectOne('/api/story-lab/evaluate').error(new ProgressEvent('network error'));
+    const shortResult = await firstPromise;
+
+    const secondPromise = service.evaluateStory(richStory);
+    httpMock.expectOne('/api/story-lab/evaluate').error(new ProgressEvent('network error'));
+    const richResult = await secondPromise;
+
+    expect(richResult.score).not.toBe(shortResult.score);
+    expect(richResult.strengths).not.toEqual(shortResult.strengths);
   });
 
   it('falls back to a clearly-marked mock evaluation when the API reports success: false', async () => {
@@ -123,7 +158,7 @@ describe('PromptEvaluationService', () => {
     expect(result.isMockEvaluation).toBeTrue();
   });
 
-  it('returns the same fixed mock evaluation content every time it falls back', async () => {
+  it('returns the same mock evaluation content for the same story every time it falls back', async () => {
     const first = service.evaluateStory(request);
     httpMock.expectOne('/api/story-lab/evaluate').error(new ProgressEvent('network error'));
     const firstResult = await first;

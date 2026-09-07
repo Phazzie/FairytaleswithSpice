@@ -3,7 +3,7 @@ import { RATE_LIMITS } from '../_lib/constants';
 import { beginPostRoute } from '../_lib/http/postRoutePreamble';
 import { XaiTextClient } from '../_lib/services/xaiTextClient';
 import { getXaiFastTimeoutMs } from '../_lib/config/xaiConfig';
-import { buildStoryQualityHeuristicReport } from '../_lib/story-lab/evaluation/storyQualityHeuristics';
+import { buildStoryQualityHeuristicReport } from '../../shared/storyQualityHeuristics';
 import { readJsonObjectBody } from '../_lib/http/jsonRequestBody';
 import { stripMarkdownJsonFence } from '../_lib/utils/modelJsonPayload';
 import { logError, logWarn } from '../_lib/utils/logger';
