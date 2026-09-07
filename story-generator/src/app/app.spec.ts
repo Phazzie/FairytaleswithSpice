@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { ComponentFixture, DeferBlockState, fakeAsync, TestBed, tick } from '@angular/core/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { ActivatedRoute, convertToParamMap, ParamMap } from '@angular/router';
@@ -3475,6 +3476,96 @@ describe('App', () => {
 
     expect(component.isExporting()).toBeFalse();
     expect(notificationService.notifications()[0]?.message).toBe('Could not reach the export service.');
+  });
+});
+
+// A third sibling top-level suite (see the comment above `describe('App
+// cloud account sign-in wiring', ...)` for why this isn't nested in the main
+// `describe('App', ...)`): this one provides a directly-controllable fake
+// `AuthService` — real Angular `signal()`s for `sessionEpoch`/`accountId`/
+// `isSignedIn`, set synchronously by the test rather than through a real (or
+// fake-Clerk) sign-in flow — because the case under test is a race that must
+// land a response *between* two exact points in time, which the heavier
+// Clerk-mock harness below has no way to pause for.
+describe('App sign-in-time profile-defaults staleness', () => {
+  let fixture: ComponentFixture<App>;
+  let component: App;
+  let storyService: jasmine.SpyObj<StoryService>;
+  let sessionEpoch: ReturnType<typeof signal<number>>;
+
+  beforeEach(async () => {
+    sessionEpoch = signal(0);
+    const fakeAuthService = {
+      sessionEpoch,
+      accountId: signal<string | null>('user-a'),
+      isSignedIn: signal(true),
+      identityTransitionPending: () => false,
+      initialize: () => Promise.resolve(),
+      signIn: () => Promise.resolve(),
+      signOut: () => Promise.resolve(),
+      isConfigured: () => false,
+      getRequestToken: () => Promise.resolve(null)
+    };
+
+    storyService = jasmine.createSpyObj<StoryService>('StoryService', [
+      'getStoryLabAuthConfig',
+      'listCloudStoryProjects',
+      'getStoryLabProfile'
+    ]);
+    storyService.getStoryLabAuthConfig.and.returnValue(of({ success: true, data: { provider: 'none' } }));
+    storyService.listCloudStoryProjects.and.returnValue(of({
+      success: true,
+      data: { ownerUserId: 'user-a', storageMode: 'non_durable_memory', projects: [], totalProjectCount: 0 }
+    }));
+
+    await TestBed.configureTestingModule({
+      imports: [App, HttpClientTestingModule],
+      providers: [
+        { provide: StoryService, useValue: storyService },
+        { provide: AuthService, useValue: fakeAuthService },
+        { provide: ActivatedRoute, useValue: { queryParamMap: of(convertToParamMap({})) } }
+      ]
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(App);
+    component = fixture.componentInstance;
+  });
+
+  // The regression this guards: a fetch started for one identity that
+  // resolves after the identity has since moved on must not apply its data,
+  // and — since this method runs at most once per account — must retry
+  // rather than leave that account's defaults never applied for the rest of
+  // the session.
+  it('retries the sign-in-time profile fetch under the current identity instead of applying a stale response', () => {
+    const firstResponse = new Subject<ApiResponse<StoryLabUserProfile>>();
+    const secondResponse = new Subject<ApiResponse<StoryLabUserProfile>>();
+    storyService.getStoryLabProfile.and.returnValues(firstResponse.asObservable(), secondResponse.asObservable());
+
+    // Flushes the constructor's own effects' first execution — unlike the
+    // main `describe('App', ...)` suite above, this test asserts on what
+    // that effect actually does (starting the sign-in-time profile fetch),
+    // so the spy's return value has to be in place first.
+    fixture.detectChanges();
+
+    // The constructor's own effect already started the first fetch, for the
+    // account signed in at construction.
+    expect(storyService.getStoryLabProfile).toHaveBeenCalledTimes(1);
+
+    // An ordinary same-account token refresh advances the epoch while that
+    // fetch is still in flight.
+    sessionEpoch.set(1);
+    firstResponse.next({ success: true, data: createStoryLabProfile({ favoriteCreatures: ['dragon'] }) });
+    firstResponse.complete();
+
+    // Stale — discarded rather than applied, and retried immediately rather
+    // than silently giving up on this account for the rest of the session.
+    expect(component.blueprint().creature).not.toBe('dragon');
+    expect(storyService.getStoryLabProfile).toHaveBeenCalledTimes(2);
+
+    secondResponse.next({ success: true, data: createStoryLabProfile({ favoriteCreatures: ['dragon'] }) });
+    secondResponse.complete();
+
+    expect(component.blueprint().creature).toBe('dragon');
   });
 });
 
