@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ***WORST TO BEST*** `ImageService` — silently served fake stock photos as "AI art" in production when `XAI_API_KEY` was missing (September 7, 2026)
+
+- This repo's rule for a missing provider key on a paid-generation service — `StoryService`,
+  `storyLabEngine`, and `AudioService` all fail closed with `AI_UNAVAILABLE` rather than silently
+  returning mock content as real output — was never applied to `ImageService`. `callGrokImageAI`
+  fell back to `generateMockImageUrl` whenever `XAI_API_KEY` was unset, which returns a random
+  `https://picsum.photos/{width}/{height}?random={uuid}` stock photo with zero relation to the
+  story. `api/image/generate.ts` added no guard of its own, so a production deployment missing the
+  key answered every "Chapter Illustration" request with `success: true`, a fake stock photo, and
+  the real, correct scene `prompt` text sitting right next to it — indistinguishable from a genuine
+  generation. The frontend rendered it as the chapter's AI illustration, and `story-html-exporter.ts`
+  baked it into exported HTML/EPUB as if it were real AI art of the reader's own scene.
+- Untested: `tests/image-service.test.ts` (900+ lines) exercised the mock path only for local/dev
+  correctness (dimensions, prompt content), never what happens in production without a key — unlike
+  `tests/audio-service.test.ts`, which already asserted `AI_UNAVAILABLE` for the equivalent case.
+- Added `isProductionRuntime()` to `ImageService`, identical to the existing checks on
+  `StoryService`/`storyLabEngine`/`AudioService`. `generateImage` now returns `AI_UNAVAILABLE`
+  (mapped to HTTP 503 by the existing `apiResponseStatus` table) when the key is missing in
+  production, naming `XAI_API_KEY` in the message. The mock path is unchanged outside production, so
+  local/dev/test behavior is untouched.
+- Added two tests to `tests/image-service.test.ts`: production with no key fails closed with
+  `AI_UNAVAILABLE`, and production with a key present still calls the real provider path (not the
+  mock fallback).
+
+#### Validation
+
+- `npm run test:image-service`, `npm run test:audio-service`, and `npm run test:all` all exit `0`.
+
 ### ***WORST TO BEST*** Story Lab's real-engine `StoryStateDelta` (`storyStateBuilder.ts`, `storyLabEngine.ts`) — the per-batch "what changed" payload that always claimed nothing changed (September 6, 2026)
 
 - `stateDelta` is the field of every Story Lab genesis/continuation response that tells the caller
