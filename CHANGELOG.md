@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ***WORST TO BEST*** Local Story Workspace — saving past the browser's twelve-story cap silently deleted the oldest story with no warning (September 8, 2026)
+
+- `StoryWorkspaceStorageService.saveProject()` caps browser-local saves at 12 and trims whichever
+  saved story sorts oldest once that's exceeded, but the success result never reported what it
+  dropped. The only caller, `App.persistSession()`, set the status line to a cheerful "Saved in this
+  browser." even on a save that had just permanently deleted a different story. This is the only save
+  path guest/anonymous sessions get — the equivalent cloud project store had already been fixed for
+  unbounded growth (`postgresStoryProjectStore.ts`), but the local browser store never got the
+  matching UX fix, so a user with 13+ locally saved stories lost their oldest one with zero warning.
+- `saveProject()` now reports the evicted project (id/title) on its result. `App.persistSession()`
+  surfaces it via a new pure `describeSaveOutcome()` helper: the status line names what was removed,
+  and a persistent (non-auto-hiding) notification warns the user and suggests saving to the cloud or
+  exporting first.
+- Added a "`X of 12 local slots used`" indicator next to the saved-stories list, with an extra warning
+  once the cap is reached, so users get advance notice before losing a story, not just a postmortem.
+- Tests: extended `story-workspace-storage.service.spec.ts` to assert the evicted project is reported
+  correctly (and `null` when no eviction happens); added an `app.spec.ts` case asserting a save that
+  crosses the cap fires the warning notification and names the removed story.
+
 ### ***WORST TO BEST*** Multi-Voice Audio Narration — the README's flagship feature silently degraded to a single voice for every character in real deployments (September 8, 2026)
 
 - `AudioService.resolveConfiguredVoiceId()`'s only way to give an AI-generated character its own

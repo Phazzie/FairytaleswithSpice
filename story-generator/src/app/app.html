@@ -788,6 +788,7 @@
           <h2>Saved here</h2>
         </div>
         <p class="muted" *ngIf="!savedProjects().length">No saved stories in this browser yet.</p>
+        <p class="muted local-slots" *ngIf="savedProjects().length" data-testid="local-slots-used">{{ savedProjects().length }} of {{ savedProjectsLimit }} local slots used<span *ngIf="savedProjects().length >= savedProjectsLimit"> — saving another will remove the oldest</span></p>
         <ol class="saved-list" *ngIf="savedProjects().length">
           <li class="saved-item" *ngFor="let project of savedProjects()">
             <button
