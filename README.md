@@ -23,7 +23,7 @@
 
 ### 🎭 **Multi-Voice Audio Narration (Preview)**
 - **Speaker Tag Recognition**: Reads the `[Character]:` / `[Character, voice: …]:` / `[Narrator]:` tags the story generator already writes into every chapter
-- **Character-Specific Voices**: Set an `ELEVENLABS_VOICE_<CHARACTER_NAME>` variable per character, with narrator/default fallbacks — see **Custom Voices** below
+- **Character-Specific Voices**: Configure a shared `ELEVENLABS_VOICE_POOL` once and every AI-generated character name spreads across it, or pin a known recurring character with an `ELEVENLABS_VOICE_<CHARACTER_NAME>` override — see **Custom Voices** below
 - **Seamless Audio Merging**: Concatenates every speaker's line into one continuous narration, in the order the excerpt reads
 - **ElevenLabs Integration, With a Dev/Test Mock Fallback**: Real text-to-speech behind `ELEVENLABS_API_KEY`; without one, a deterministic silent narration of the same length in development and tests, so the feature is fully testable offline. A production deployment with no key answers `AI_UNAVAILABLE` instead — it never narrates silence and calls it a success.
 - **Narrates an opening excerpt, not the whole chapter**: the response is one inline audio file, capped at ~3 minutes of narration so it fits safely in a single API response — this app's shortest chapter (600 words) is already longer than that. Narrating a full chapter needs stored, URL-delivered audio instead, which is real follow-up work.
@@ -428,12 +428,18 @@ Content-Type: application/json
 3. Update story generation prompts
 
 ### **Custom Voices**
-`AudioService` resolves each speaker tag to a voice in this order: the caller's `voice` override, a per-character variable named after the speaker, then a narrator/default fallback (`ELEVENLABS_VOICE_NARRATOR`/`ELEVENLABS_VOICE_DEFAULT`). The deterministic id after that is a **mock-mode-only** fallback — it is never a real ElevenLabs voice, so with `ELEVENLABS_API_KEY` set, a speaker that reaches it instead fails the request with a configuration error naming the speaker. A production deployment needs at least `ELEVENLABS_VOICE_DEFAULT` set, or every speaker mapped individually. Set environment variables to configure real ElevenLabs voices:
+Character names are written by the AI fresh for every story, so pre-registering an env var per name isn't realistic — the setup most deployments actually want is `ELEVENLABS_VOICE_POOL`, a fixed set of real voice ids configured once:
+```env
+ELEVENLABS_VOICE_POOL=your_voice_id_1,your_voice_id_2,your_voice_id_3
+ELEVENLABS_VOICE_NARRATOR=your_voice_id
+```
+Each speaker's name is hashed to a stable slot in the pool, so the same character gets the same voice across every chapter and continuation of a story, and distinct characters spread across the pool rather than collapsing onto one voice.
+
+For a known, recurring character you want pinned to a specific voice regardless of the pool, set a per-character override named after them:
 ```env
 ELEVENLABS_VOICE_LORD_DAMIEN=your_voice_id
-ELEVENLABS_VOICE_NARRATOR=your_voice_id
-ELEVENLABS_VOICE_DEFAULT=your_voice_id
 ```
+`AudioService` resolves each speaker tag to a voice in this order: the caller's `voice` override, the per-character override, `ELEVENLABS_VOICE_NARRATOR` for the narrator specifically, `ELEVENLABS_VOICE_POOL`, then a flat `ELEVENLABS_VOICE_DEFAULT` fallback for anyone still unresolved. The deterministic id after that is a **mock-mode-only** fallback — it is never a real ElevenLabs voice, so with `ELEVENLABS_API_KEY` set, a speaker that reaches it instead fails the request with a configuration error naming the speaker. A production deployment needs at least one of `ELEVENLABS_VOICE_DEFAULT` or `ELEVENLABS_VOICE_POOL` set.
 
 ### **New Export Formats**
 Extend the export service with additional format handlers following the existing seam contract pattern.
