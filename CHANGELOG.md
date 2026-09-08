@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ***WORST TO BEST*** Multi-Voice Audio Narration — the README's flagship feature silently degraded to a single voice for every character in real deployments (September 8, 2026)
+
+- `AudioService.resolveConfiguredVoiceId()`'s only way to give an AI-generated character its own
+  voice was an exact-match `ELEVENLABS_VOICE_<CHARACTER_NAME>` variable, set before deploy. Character
+  names are written fresh by the AI for every story — unbounded and unpredictable — so no operator
+  can realistically pre-register them. Every real deployment sets only `ELEVENLABS_VOICE_DEFAULT`
+  (the README's own documented minimum setup), so every speaker in every story — narrator included,
+  unless `ELEVENLABS_VOICE_NARRATOR` is also set — resolved to the exact same voice. The feature
+  README:24 calls "🎭 Multi-Voice Audio Narration" silently degraded to single-voice-for-everyone in
+  every real deployment, with no UI indication, and `tests/audio-service.test.ts` only ever exercised
+  exact-name overrides and the default fallback — never an unregistered AI-generated name with more
+  than one speaker in real mode.
+- Added a new resolution tier, `ELEVENLABS_VOICE_POOL` — a comma-separated list of real ElevenLabs
+  voice ids an operator configures once, not per character. `parseVoicePool()` trims/dedupes/drops
+  empty entries; `resolvePoolVoiceId()` hashes the speaker name (the same `createHash('sha256')`
+  technique `mockVoiceId()` already uses) to a stable slot in the pool, so the same character always
+  gets the same pool voice across every chapter and continuation, with no state persisted to make
+  that true, and distinct names spread across the pool rather than collapsing onto one.
+- Inserted into `resolveConfiguredVoiceId()`'s existing order, between the narrator-specific check
+  and the final default: caller `voice` override → exact `ELEVENLABS_VOICE_<NAME>` (kept, for pinning
+  a known recurring character) → `ELEVENLABS_VOICE_NARRATOR` (kept) → **pool (new)** →
+  `ELEVENLABS_VOICE_DEFAULT` (kept, final fallback — zero behavior change for operators who don't set
+  the pool). The "no voice configured" error message now mentions `ELEVENLABS_VOICE_POOL` as an
+  option alongside the existing three.
+- Added tests: `resolvePoolVoiceId()` determinism and distribution across distinct names,
+  `parseVoicePool()`'s trim/dedupe/empty-entry handling, the per-character/narrator overrides still
+  winning over the pool, a blank pool falling through to the flat default, and an end-to-end
+  `convertToAudio()` case asserting a multi-speaker chapter with only a pool configured resolves to
+  more than one voice.
+- README's *Custom Voices* section rewritten to lead with the pool as the realistic setup for
+  AI-generated names, keeping the exact-name override documented as a pinning option for a known
+  character.
+
+No change to the caller `voice` override, the per-character/narrator env vars, the mock-mode
+fallback, or `voicesUsed`'s reporting shape — an operator who sets none of the new pool var keeps
+today's exact behavior.
+
+#### Validation
+
+- `npx tsx tests/audio-service.test.ts` passes, including all new pool-resolution cases.
+- `npm run test:all` (backend, 90+ suites) exits `0`.
+
 ### ***WORST TO BEST*** Proving Grounds evaluation fallback — a fixed placeholder score/feedback regardless of what story was submitted (September 7, 2026)
 
 - Proving Grounds exists to A/B compare prompt variants by their evaluation score. Whenever
