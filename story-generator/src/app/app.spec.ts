@@ -1438,6 +1438,44 @@ describe('App', () => {
     expect(component.cloudLibrarySyncState().mode).toBe('cloud_synced');
   });
 
+  it('warns when saving locally evicts the oldest browser-saved story past the twelve-story cap', () => {
+    const olderProjects = Array.from({ length: 11 }, (unused, index) => {
+      const storyId = `story-old-${index}`;
+      return {
+        id: storyId,
+        storyId,
+        title: `Old Story ${index}`,
+        synopsis: 'An older saved story.',
+        blueprint: {},
+        summary: createSummary({ storyId, title: `Old Story ${index}` }),
+        state: createState({ storyId }),
+        chapters: [createChapter()],
+        createdAt: new Date(2026, 0, index + 1).toISOString(),
+        updatedAt: new Date(2026, 0, index + 1).toISOString()
+      };
+    });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(olderProjects));
+
+    seedWorkbenchForContinuation({ summary: createSummary({ storyId: 'story-twelfth', title: 'Twelfth Story' }) });
+    component.saveActiveProject();
+    expect(component.savedProjects().length).toBe(12);
+    expect(component.workspaceSaveStatus()).toBe('Saved in this browser.');
+
+    const notificationService = TestBed.inject(NotificationService);
+    seedWorkbenchForContinuation({ summary: createSummary({ storyId: 'story-thirteenth', title: 'Thirteenth Story' }) });
+    component.saveActiveProject();
+
+    expect(component.savedProjects().length).toBe(12);
+    expect(component.savedProjects().some(project => project.id === 'story-old-0')).toBeFalse();
+    expect(component.workspaceSaveStatus()).toContain('"Old Story 0" was removed to stay within the 12-story local limit.');
+
+    const warningNotification = notificationService.notifications()
+      .find(notification => notification.title === 'Local story limit reached');
+    expect(warningNotification).toBeDefined();
+    expect(warningNotification?.message).toContain('Old Story 0');
+    expect(warningNotification?.autoHide).toBeFalse();
+  });
+
   it('keeps connected cloud state when there is no active workbench project to save', () => {
     component.cloudLibrarySyncState.set({
       mode: 'cloud_synced',

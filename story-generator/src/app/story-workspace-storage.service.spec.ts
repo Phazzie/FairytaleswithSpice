@@ -134,6 +134,43 @@ describe('StoryWorkspaceStorageService', () => {
     expect(projects[0].id).toBe('story-13');
   });
 
+  it('reports which project was evicted when a save exceeds the twelve-story cap', () => {
+    for (let index = 0; index < 12; index += 1) {
+      const result = service.saveProject(createProject({
+        id: `story-${index}`,
+        storyId: `story-${index}`,
+        title: `Story ${index}`,
+        updatedAt: new Date(2026, 0, index + 1).toISOString()
+      }));
+
+      expect(result.success).toBeTrue();
+      expect(result.success && result.evictedProject).toBeNull();
+    }
+
+    const thirteenthResult = service.saveProject(createProject({
+      id: 'story-12',
+      storyId: 'story-12',
+      title: 'Story 12',
+      updatedAt: new Date(2026, 0, 13).toISOString()
+    }));
+
+    expect(thirteenthResult.success).toBeTrue();
+    expect(thirteenthResult.success && thirteenthResult.evictedProject).toEqual({
+      id: 'story-0',
+      title: 'Story 0'
+    });
+  });
+
+  it('reports no eviction when updating an existing project keeps the count at or under the cap', () => {
+    const project = createProject();
+    service.saveProject(project);
+
+    const result = service.saveProject({ ...project, title: 'Reef Court Rewritten' });
+
+    expect(result.success).toBeTrue();
+    expect(result.success && result.evictedProject).toBeNull();
+  });
+
   it('keeps ordering and trimming by date when a stored timestamp is unreadable', () => {
     // Twelve stored projects, newest first, with one entry whose `updatedAt`
     // survives `isSavedStoryProject` (a non-empty string) but not `Date.parse`.

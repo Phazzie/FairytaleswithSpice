@@ -78,7 +78,7 @@ import {
 import { StoryService } from './story.service';
 import { AuthService } from './auth.service';
 import { CloudLibraryService } from './cloud-library.service';
-import { StoryWorkspaceStorageService } from './story-workspace-storage.service';
+import { describeSaveOutcome, StoryWorkspaceStorageService } from './story-workspace-storage.service';
 import { ErrorLoggingService } from './error-logging';
 import { DebugPanel } from './debug-panel/debug-panel';
 import { ErrorDisplayComponent } from './error-display/error-display';
@@ -654,6 +654,7 @@ export class App implements OnDestroy {
   readonly statusMessage = signal<string>('Tell us what kind of enchanted, spicy story you want.');
   readonly workspaceSaveStatus = signal<string>('No saved stories in this browser yet.');
   readonly savedProjects = signal<SavedStoryProject[]>([]);
+  readonly savedProjectsLimit = this.workspaceStorage.maxProjects;
   // Owned by `CloudLibraryService` — aliased here (same signal instances,
   // not copies) so the template and this class's own save/load/delete
   // methods keep their existing names. See that service's own doc comment
@@ -2815,7 +2816,12 @@ export class App implements OnDestroy {
     }
 
     this.refreshSavedProjects();
-    this.workspaceSaveStatus.set('Saved in this browser.');
+    const outcome = describeSaveOutcome(result.evictedProject, this.savedProjectsLimit);
+    this.workspaceSaveStatus.set(outcome.statusMessage);
+    if (outcome.evictionWarning) {
+      this.notificationService.warning(outcome.evictionWarning.title, outcome.evictionWarning.message, { autoHide: false });
+    }
+
     return result.data.id;
   }
 
