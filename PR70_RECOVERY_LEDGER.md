@@ -18,6 +18,8 @@ Status values:
 
 | PR | Planned action | Actual status | Notes |
 |---:|---|---|---|
+| #325 | close-as-superseded (maintainer call) | In review | Story Lab Cloud Account/Auth, superseded by #326/#328's shipped-and-hardened Clerk implementation; now has real merge conflicts against `main`, not just doc churn. Status comment posted 2026-09-06; see "Stale-PR triage cycle" below. |
+| #327 | needs to be split (maintainer call) | In review | Dependabot 20-update group bundling an Angular 20→22 major jump with unrelated patch/minor bumps — third grouped PR to repeat this pattern after #194 and #318. Status comment posted 2026-09-06; see "Stale-PR triage cycle" below. |
 | #95 | merge | merged | Lockfile-only Dependabot PR updated Story Generator `picomatch` and `qs`, reducing full dev/test audit findings from seven to four. |
 | #88 | recreate/supersede | superseded; closed | Dependency-only Dependabot PR was superseded by fresher dependency updates in PR #94, then closed. |
 | #86 | merge | merged; closed | Merged design system doc; normalized nonzero letter-spacing tokens; closed as superseded by #87. |
@@ -1702,3 +1704,27 @@ Use this template for detailed entries as each PR is handled:
   - It does materially improve the documented dev/test audit state, so the shipping report needed a final accuracy update.
 - GitHub PR closure note:
   - Merged. No closure comment needed.
+
+## Stale-PR triage cycle - 2026-09-06 18:16 UTC
+
+Scope per the automated stale-PR recovery routine: open PRs with no activity in the last 3 days, excluding `claude/dreamy-bardeen-*` branches (owned by the separate hourly quick-wins routine). Seven PRs were open at cycle start (#198, #322, #316, #325, #327, #341, and this routine's own prior-cycle PR #343); only #325 and #327 were stale (last activity before 2026-09-03T18:16:54Z — #325 at 16:55 UTC and #327 at 18:02 UTC that day). #198, #322 and #316 were touched by the previous run of this same routine earlier today (04:52 UTC, PR #343, still open/unmerged) and so had recent activity; #341 is a same-week external fork PR; #343 is this routine's own prior output. All were left untouched this cycle under the literal 3-day rule.
+
+Neither #325 nor #327 qualified for the "small and mechanical" auto-merge bar (single same-major dependency bump / docs-only / single-purpose cleanup with green CI and no open design questions). Both landed in the "larger or riskier" bucket — #325 crosses the account/auth boundary explicitly, #327 bundles a major Angular version bump with an unrelated multi-package update — so each got exactly one status comment rather than a merge or close, per this routine's instructions.
+
+### PR #325 - Story Lab Cloud Account/Auth ("a fully-built, tested auth system that no real user could ever reach")
+
+- Status: `pending` (open, in review; one status comment posted, not merged or closed)
+- Disposition this cycle: close-as-superseded. While this PR sat open (2026-09-03 through today), `main` independently merged the *same* Story Lab Cloud Account/Auth target via PR #326, then hardened it through 14+ rounds in #328 plus further follow-ups (#329, #336, issue #331). `api/_lib/story-lab/auth/clerkSessionVerifier.ts` now exists on `main` with different content than this PR's version of the same path — confirmed via `git ls-tree` and `git log --diff-filter=A` on that path.
+- Mergeable: no longer clean. `git merge-tree` against current `main` shows real content conflicts (not just doc churn) in `PR70_RECOVERY_CHANGELOG.md`, `README.md`, `.env.example`, and multiple `api/_lib/story-lab/auth/*` and `story-generator/src/app/*` files main added independently through #326/#328.
+- CI: last run (round 8, `4c31921`) green — CodeRabbit skipped (manual-review repo), Vercel deployment succeeded.
+- Not-taken material worth flagging before an eventual close: this PR's frontend design avoids the `@clerk/clerk-js` SDK entirely (redirect to Clerk's hosted Account Portal instead), sidestepping the ~350 transitive packages (`@coinbase/wallet-sdk`, `@solana/wallet-adapter-react`, `@stripe/stripe-js`, etc.) that main's shipped `@clerk/clerk-js`-based implementation took on. Flagged on the PR and here so it reaches `NOT_TAKEN_FEATURE_LEDGER.md` whenever this is actually closed.
+- Why not closed here: account/auth boundaries are explicitly out of this routine's merge-or-close authority for this cycle, and `AGENTS.md` requires not-taken material to be recorded before closing a PR — that mining and the actual close are left to a maintainer or a future cycle.
+- Recommendation posted to the PR: close-as-superseded by #326/#328, after mining the SDK-avoidance design idea above.
+
+### PR #327 - chore(deps): bump the npm_and_yarn group across 2 directories with 20 updates
+
+- Status: `pending` (open, in review; one status comment posted, not merged)
+- Disposition this cycle: needs to be split. Confirmed against current `main`: root `package.json` is still `axios@^1.16.1` and `story-generator/package.json` is still `@angular/core@^20.3.22`, so none of these 20 updates have landed elsewhere yet, and `git merge-tree` shows this PR's diff still applies with zero conflicts. The blocker is scope, not staleness: this group bundles a two-major-version Angular jump (`20.3.22` → `22.1.5`, skipping Angular 21, plus `@angular/build`/`@angular/compiler-cli`) together with unrelated patch/minor bumps (`axios` 1.16.1→1.18.0, `form-data`, `hasown`, ...) in one commit, which is exactly what `AGENTS.md` line 218 says not to do. Per `STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md`, this is the third grouped Dependabot PR to repeat that pattern, after #194 and #318 (#318 closed unmerged for the same reason; its narrower lockfile-only replacement #322 is still open as the live alternative for the non-Angular advisories).
+- Mergeable: GitHub reports `mergeable_state: unstable` — no conflicts, but the `Vercel` deployment check is failing (`dpl_2kXnwpKVqHc9im5nAqRWTS7C1kZx`); SonarCloud passed.
+- Why not merged here: multi-package dependency bundle plus a major framework version bump — outside this routine's "single same-major dependency bump" auto-merge bar regardless of CI state.
+- Recommendation posted to the PR: close and let Dependabot (or a maintainer) regenerate two PRs — the safe patch/minor bumps (likely overlapping #322), and a dedicated, separately-validated Angular 20→22 major-upgrade branch that can absorb and fix the current Vercel deployment failure with its own migration testing.
