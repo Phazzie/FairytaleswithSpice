@@ -141,13 +141,25 @@
             class="btn btn-primary btn-large"
             data-testid="generate-story"
             (click)="generateStory()"
-            [disabled]="isGenerating() || selectedThemes.length === 0">
+            [disabled]="isGenerating() || selectedThemes.length === 0 || !!narrativeDirectivesOverflowMessage()"
+            [attr.aria-describedby]="narrativeDirectivesOverflowMessage() ? 'narrative-directives-overflow-message' : null">
             @if (isGenerating()) {
               <span class="spinner">⏳</span> Generating...
             } @else {
               🚀 Generate Story
             }
           </button>
+
+          @if (narrativeDirectivesOverflowMessage(); as overflow) {
+            <p
+              id="narrative-directives-overflow-message"
+              class="narrative-directives-warning"
+              data-testid="narrative-directives-overflow"
+              role="alert">
+              ⚠️ {{ overflow }}
+              <span class="narrative-directives-warning-detail">Choose a shorter template or trim the custom prompt.</span>
+            </p>
+          }
         </div>
       </div>
 
@@ -218,7 +230,12 @@
               }
             </div>
 
-            <p class="hint">💡 These elements are randomly selected for each generation, mimicking the production story service</p>
+            <p class="hint">
+              💡 This is a preview of one possible random draw, using the same tables the server draws from — it does
+              not determine what the "Generate Story" button below actually sends. The server draws its own author
+              styles and beat structure independently for the run itself, so "Regenerate Random" changes what this
+              panel shows, not what gets generated.
+            </p>
           </div>
         }
       </div>
@@ -244,7 +261,8 @@
                 [(ngModel)]="customSystemPrompt"
                 class="form-control code-editor"
                 rows="10"
-                placeholder="Enter custom system prompt..."></textarea>
+                placeholder="Enter custom system prompt..."
+                [attr.aria-describedby]="narrativeDirectivesOverflowMessage() ? 'narrative-directives-overflow-message' : null"></textarea>
             </div>
             <div class="form-group">
               <label for="pg-user-prompt">User Prompt Template</label>
@@ -253,7 +271,8 @@
                 [(ngModel)]="customUserPrompt"
                 class="form-control code-editor"
                 rows="6"
-                placeholder="Enter custom user prompt template..."></textarea>
+                placeholder="Enter custom user prompt template..."
+                [attr.aria-describedby]="narrativeDirectivesOverflowMessage() ? 'narrative-directives-overflow-message' : null"></textarea>
             </div>
             <p class="hint">💡 Edit prompts to test variations and improvements</p>
           </div>
@@ -278,6 +297,12 @@
                   <h3>Test #{{ testHistory().indexOf(test) + 1 }}</h3>
                   <span class="timestamp">{{ test.timestamp | date:'short' }}</span>
                 </div>
+
+                @if (test.isMockGeneration) {
+                  <p class="mock-evaluation-notice" data-testid="mock-generation-badge">
+                    ⚠️ Offline mock chapters — not real AI output. Do not use this result for prompt comparisons.
+                  </p>
+                }
 
                 <div class="comparison-config">
                   <p><strong>Template:</strong> {{ test.configuration.promptTemplate.name }}</p>
@@ -345,6 +370,12 @@
               </button>
             </div>
           </div>
+
+          @if (currentTest()!.isMockGeneration) {
+            <p class="mock-evaluation-notice" data-testid="mock-generation-badge">
+              ⚠️ Offline mock chapters — not real AI output. Do not use this result for prompt comparisons.
+            </p>
+          }
 
           <!-- AI Evaluation Results -->
           @if (currentTest()!.aiEvaluation) {
@@ -515,6 +546,15 @@
                   <span class="test-number">#{{ $index + 1 }}</span>
                   <span class="timestamp">{{ test.timestamp | date:'short' }}</span>
 
+                  @if (test.isMockGeneration) {
+                    <span
+                      class="score-badge mini score-low"
+                      data-testid="mock-generation-badge"
+                      title="Offline mock chapters — not real AI output, not comparable to a real run">
+                      🎭 mock
+                    </span>
+                  }
+
                   @if (test.aiEvaluation) {
                     <span
                       class="score-badge mini"
@@ -580,4 +620,56 @@
       }
     </main>
   </div>
+
+  <!--
+    Replaces the `globalThis.alert()` this page used to show a filled prompt
+    with. A system prompt this size (thousands of characters) truncates in a
+    browser `alert()`, can't be scrolled or selected on most platforms, and is
+    a no-op during SSR — a panel bound to a signal has none of those limits.
+
+    A native `<dialog>` rather than `role="dialog"` on a `<div>`/`<section>`
+    (`StoryLabProfilePanelComponent`'s pattern, which this matched at first):
+    SonarCloud's HTML ruleset prefers the real element, and it costs nothing
+    here since focus-on-open, the Tab-wrap trap, Escape-to-close, and
+    restoring focus on close (`onPromptPreviewKeydown`, mirroring that
+    component's `onDialogKeydown`) are all still implemented the same way —
+    only the tag name and the now-implicit dialog semantics changed. The
+    backdrop keeps a `(keydown.escape)` of its own too: a `role="presentation"`
+    `<div>` with a click handler and no keyboard equivalent is exactly the
+    pairing SonarCloud's `onClick`/`onKeyDown` rule polices, independently of
+    whether the reader's focus ever actually lands there.
+  -->
+  @if (promptPreview(); as preview) {
+    <div
+      class="prompt-preview-overlay"
+      role="presentation"
+      (click)="closePromptPreview()"
+      (keydown.escape)="closePromptPreview()">
+      <dialog
+        #promptPreviewPanel
+        open
+        class="prompt-preview-panel"
+        [attr.aria-label]="preview.templateName + ' filled prompts'"
+        tabindex="-1"
+        (click)="$event.stopPropagation()"
+        (keydown)="onPromptPreviewKeydown($event)">
+        <div class="prompt-preview-header">
+          <h2>{{ preview.templateName }} — Filled Prompts</h2>
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
+            data-testid="close-prompt-preview"
+            (click)="closePromptPreview()">
+            ✕ Close
+          </button>
+        </div>
+        <div class="prompt-preview-body">
+          <h3>System Prompt</h3>
+          <pre class="prompt-preview-text" data-testid="prompt-preview-system">{{ preview.system }}</pre>
+          <h3>User Prompt</h3>
+          <pre class="prompt-preview-text" data-testid="prompt-preview-user">{{ preview.user }}</pre>
+        </div>
+      </dialog>
+    </div>
+  }
 </div>

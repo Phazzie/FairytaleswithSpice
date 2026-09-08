@@ -69,7 +69,7 @@ import {
   STORY_LAB_MERGED_NO_GO_CONTENT_MAX_LENGTH
 } from '../../../shared/storyBlueprintLimits';
 import { capAtWordBoundaryWithinCodeUnits } from '../utils/textExcerpt';
-import { collapseWhitespace } from '../utils/whitespace';
+import { collapseWhitespace } from '../../../shared/whitespace';
 import {
   STORY_BEAT_STRUCTURES,
   STORY_CHEKHOV_ELEMENTS,

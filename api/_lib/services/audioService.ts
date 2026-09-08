@@ -280,6 +280,55 @@ function mockVoiceId(speaker: string): string {
 }
 
 /**
+ * `ELEVENLABS_VOICE_POOL`'s raw value, split into the real voice ids an
+ * operator registered. Trims each entry and drops empty ones so a trailing
+ * comma or stray whitespace doesn't leave a hole in the pool `resolvePoolVoiceId`
+ * would otherwise index into; deduped so a repeated id doesn't get a repeated
+ * (and therefore over-weighted) slot.
+ */
+export function parseVoicePool(raw: string | undefined): string[] {
+  if (!raw) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const pool: string[] = [];
+  for (const entry of raw.split(',')) {
+    const trimmed = entry.trim();
+    if (trimmed && !seen.has(trimmed)) {
+      seen.add(trimmed);
+      pool.push(trimmed);
+    }
+  }
+
+  return pool;
+}
+
+/**
+ * Which pool voice a speaker gets, for an operator who registered several
+ * real voice ids once (`ELEVENLABS_VOICE_POOL`) instead of one env var per
+ * character. Character names are AI-generated per story and unbounded, so
+ * pre-registering an exact `ELEVENLABS_VOICE_<NAME>` for each one isn't
+ * realistic — this spreads them across a fixed, small pool instead.
+ *
+ * Same technique as `mockVoiceId`: hash the speaker name and use the digest
+ * to pick a slot, so the same character always lands on the same pool voice
+ * across chapters and continuations, with nothing persisted to make that
+ * true. Different names are expected to spread across the pool rather than
+ * collapse onto one entry, the way a naive `charCodeAt(0) % pool.length`
+ * would for names sharing a first letter.
+ */
+export function resolvePoolVoiceId(speaker: string, pool: string[]): string | null {
+  if (pool.length === 0) {
+    return null;
+  }
+
+  const digest = createHash('sha256').update(speaker).digest();
+  const index = digest.readUInt32BE(0) % pool.length;
+  return pool[index];
+}
+
+/**
  * ElevenLabs' documented range for `voice_settings.speed`, which is narrower
  * than this seam's own `MIN_SPEED`/`MAX_SPEED`. Verify against ElevenLabs'
  * current API reference before relying on this exact bound in production —
@@ -558,8 +607,8 @@ export class AudioService {
         // not in the server log; see `logSafeMessage`.
         throw new CallerFacingAudioError(
           `No ElevenLabs voice is configured for "${segment.speaker}". Set ELEVENLABS_VOICE_DEFAULT `
-            + '(or ELEVENLABS_VOICE_NARRATOR, or a per-character ELEVENLABS_VOICE_<NAME> override) '
-            + 'before narrating with a real API key.',
+            + '(or ELEVENLABS_VOICE_POOL, ELEVENLABS_VOICE_NARRATOR, or a per-character '
+            + 'ELEVENLABS_VOICE_<NAME> override) before narrating with a real API key.',
           false,
           'No ElevenLabs voice is configured for one of this chapter\'s speakers.'
         );
@@ -628,15 +677,20 @@ export class AudioService {
    * Order: the caller's `voice` override, applied to every segment alike; a
    * per-character environment variable named after the speaker (README's own
    * `ELEVENLABS_VOICE_<NAME>` convention, generalized from the creature/gender
-   * examples it gave to the character names the tags actually carry); for the
-   * narrator specifically, `ELEVENLABS_VOICE_NARRATOR`; and finally
-   * `ELEVENLABS_VOICE_DEFAULT` for anyone still unresolved, narrator included —
-   * an operator who sets only `ELEVENLABS_VOICE_DEFAULT` (this seam's smallest
-   * documented setup) still narrates every speaker, not just named characters.
-   * `null` rather than a mock id here: the caller (`synthesizeSegments`)
-   * decides what an unresolved voice means — a fallback to the mock
-   * provider's deterministic id in mock mode, or a refusal in real mode,
-   * where sending that same id to ElevenLabs would only fail less clearly.
+   * examples it gave to the character names the tags actually carry), for
+   * pinning a specific recurring character; for the narrator specifically,
+   * `ELEVENLABS_VOICE_NARRATOR`; then `ELEVENLABS_VOICE_POOL` — a fixed set of
+   * real voice ids an operator registers once, since AI-generated character
+   * names are unbounded and can't realistically be pre-registered one by one —
+   * spreading unresolved speakers across it by `resolvePoolVoiceId`; and
+   * finally `ELEVENLABS_VOICE_DEFAULT` for anyone still unresolved, narrator
+   * included — an operator who sets only `ELEVENLABS_VOICE_DEFAULT` (this
+   * seam's smallest documented setup) still narrates every speaker, not just
+   * named characters. `null` rather than a mock id here: the caller
+   * (`synthesizeSegments`) decides what an unresolved voice means — a fallback
+   * to the mock provider's deterministic id in mock mode, or a refusal in real
+   * mode, where sending that same id to ElevenLabs would only fail less
+   * clearly.
    */
   private resolveConfiguredVoiceId(speaker: string, voiceOverride: string | undefined): string | null {
     if (voiceOverride && voiceOverride.trim()) {
@@ -653,6 +707,11 @@ export class AudioService {
       if (narratorVoice && narratorVoice.trim()) {
         return narratorVoice.trim();
       }
+    }
+
+    const pooledVoice = resolvePoolVoiceId(speaker, parseVoicePool(process.env['ELEVENLABS_VOICE_POOL']));
+    if (pooledVoice) {
+      return pooledVoice;
     }
 
     const defaultVoice = process.env['ELEVENLABS_VOICE_DEFAULT'];

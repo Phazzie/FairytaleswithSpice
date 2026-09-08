@@ -25,6 +25,11 @@ import type {
 } from '../../../api/_lib/types/contracts';
 import type { ChapterBatchSize } from '../../../shared/chapterBatchVocabulary';
 import type { XaiReasoningEffort } from '../../../shared/reasoningEffortVocabulary';
+import type {
+  StoryQualityDimensionId,
+  StoryQualityDimensionScore,
+  StoryQualityHeuristicReport
+} from '../../../shared/storyQualityHeuristics';
 
 // `CreatureArchetype` and its table come from `shared/creatureVocabulary`,
 // which sits below both trees: the union used to be written out here and again
@@ -872,30 +877,12 @@ export interface StoryLabJobCreationResponse<TPublicResult = unknown> {
   durability: StoryLabJobDurability;
 }
 
-export type StoryQualityDimensionId =
-  | 'continuity'
-  | 'cliffhanger_quality'
-  | 'trope_freshness'
-  | 'emotional_variety'
-  | 'character_consistency'
-  | 'prose_quality'
-  | 'audio_readiness';
-
-export interface StoryQualityDimensionScore {
-  id: StoryQualityDimensionId;
-  label: string;
-  score: number;
-  rationale: string;
-  signals: string[];
-}
-
-export interface StoryQualityHeuristicReport {
-  source: 'heuristic';
-  heuristicOnly: true;
-  overallScore: number;
-  dimensions: StoryQualityDimensionScore[];
-  summary: string;
-}
+// `StoryQualityDimensionId`/`StoryQualityDimensionScore`/`StoryQualityHeuristicReport`
+// moved to `shared/storyQualityHeuristics` so the client's own offline fallback
+// (`PromptEvaluationService.getMockEvaluation`) can run the same deterministic
+// scan the server attaches as `heuristicReport`, rather than a fixed placeholder
+// that could never reflect the story actually submitted.
+export type { StoryQualityDimensionId, StoryQualityDimensionScore, StoryQualityHeuristicReport };
 
 export interface EvaluationCriteria {
   score: number;
@@ -972,6 +959,15 @@ export interface ProvingGroundsTestResult {
   generationTime: number;
   chapterCount: number;
   totalWordCount: number;
+  /**
+   * Whether `generatedStory` came from `GenerationTelemetry.engine === 'custom'`
+   * — the server's canned mock chapters, returned when no model provider is
+   * configured, which ignore the prompt under test entirely. A page whose
+   * whole purpose is comparing prompts has to say so wherever this result is
+   * shown, the same way `aiEvaluation.isMockEvaluation` already does for a
+   * placeholder score.
+   */
+  isMockGeneration: boolean;
   aiEvaluation?: EvaluationCriteria;
 }
 

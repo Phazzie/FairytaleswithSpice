@@ -33,8 +33,8 @@ import {
   getStateThreads,
   stripStoryMemoryCardSections
 } from './continuationGuidance';
-import { buildChapterDelta, buildStateDelta, buildStateSnapshot } from './storyStateBuilder';
-import { collapseWhitespace } from '../utils/whitespace';
+import { buildChapterDelta, buildStateDelta, buildStateSnapshot, deriveContinuityDelta } from './storyStateBuilder';
+import { collapseWhitespace } from '../../../shared/whitespace';
 import { stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
 import { STORY_BLUEPRINT_LIMITS } from '../../../shared/storyBlueprintLimits';
 
@@ -301,7 +301,8 @@ export async function generateStoryLabGenesis(
     input,
     !options.serviceFactory,
     requestStartedAtMs,
-    options.requestId
+    options.requestId,
+    null
   );
   payload.persistence = persistStoryIteration(payload);
 
@@ -442,7 +443,8 @@ export async function continueStoryLab(
     undefined,
     !options.serviceFactory,
     requestStartedAtMs,
-    options.requestId
+    options.requestId,
+    storyState
   );
   payload.persistence = persistStoryIteration(payload, previousChapters);
 
@@ -648,7 +650,8 @@ async function enrichContinuity<T extends StoryIterationPayload>(
   blueprint: LabGenerationSeam['input'] | undefined,
   useAi: boolean,
   requestStartedAtMs: number,
-  requestId?: string
+  requestId: string | undefined,
+  previousState: StoryStateSnapshot | null
 ): Promise<T> {
   const extraction = await extractContinuity({
     storyId: payload.summary.storyId,
@@ -666,8 +669,14 @@ async function enrichContinuity<T extends StoryIterationPayload>(
   return {
     ...payload,
     state: extraction.state,
+    // Re-derived from the states either side of this batch — the pre-batch
+    // snapshot the request started from and the post-extraction state above
+    // — rather than left as whatever `buildStateDelta` guessed from each
+    // chapter's own placeholder `ChapterDelta` before extraction ever ran.
+    // See `deriveContinuityDelta`'s own comment for why that guess is wrong.
     stateDelta: payload.stateDelta ? {
       ...payload.stateDelta,
+      ...deriveContinuityDelta(previousState, extraction.state),
       continuityWarnings: extraction.state.continuityWarnings
     } : payload.stateDelta,
     continuityExtraction: extraction.receipt

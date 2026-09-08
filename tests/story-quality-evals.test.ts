@@ -8,7 +8,7 @@ import {
   toClassicGenerationInput
 } from '../api/_lib/story-lab/storyLabEngine';
 import { extractContinuity } from '../api/_lib/story-lab/continuityExtractor';
-import { buildStoryQualityHeuristicReport } from '../api/_lib/story-lab/evaluation/storyQualityHeuristics';
+import { buildStoryQualityHeuristicReport } from '../shared/storyQualityHeuristics';
 import type {
   StoryGenerationSeam as LabGenerationSeam,
   StoryStateSnapshot

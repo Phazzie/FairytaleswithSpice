@@ -20,13 +20,13 @@ import {
   stripSpeakerTagsForDisplay
 } from '../api/_lib/services/storyContentAnalysis';
 import { previewStoryLabContinuationGuidance } from '../api/_lib/story-lab/continuationGuidance';
-import { buildStoryQualityHeuristicReport } from '../api/_lib/story-lab/evaluation/storyQualityHeuristics';
+import { buildStoryQualityHeuristicReport } from '../shared/storyQualityHeuristics';
 import type { StoryStateSnapshot } from '../api/_lib/story-lab/contracts';
 import {
   containsWholeWord,
   wholeWordAlternationPattern,
   wholeWordPattern
-} from '../api/_lib/utils/wholeWord';
+} from '../shared/wholeWord';
 import { assert } from './assert';
 
 // ==================== the shared matcher ====================

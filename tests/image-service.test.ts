@@ -18,6 +18,12 @@ import { IMAGE_GENERATION_LIMITS } from '../shared/storyBlueprintLimits';
 // image URL when it is absent, so clearing it before the first `new
 // ImageService()` is what keeps these tests off the network.
 delete process.env['XAI_API_KEY'];
+// `isProductionRuntime()` reads these from ambient `process.env`, the same
+// gap `tests/audio-service.test.ts` guards against — an ambient
+// `NODE_ENV=production` in whatever runs this suite would turn every
+// mock-mode assertion below into an `AI_UNAVAILABLE` failure instead.
+delete process.env['NODE_ENV'];
+delete process.env['VERCEL_ENV'];
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -875,6 +881,51 @@ async function testEveryImageStyleIsAcceptedAndDescribedAsItself(): Promise<void
   );
 }
 
+// This repo's rule for a missing provider key on a paid-generation service —
+// `StoryService`/`storyLabEngine`/`AudioService`: fail closed with
+// `AI_UNAVAILABLE` in production rather than silently serving mock content as
+// real output. `ImageService` was the one paid-generation service still doing
+// the latter: a production deployment with no `XAI_API_KEY` answered every
+// "Chapter Illustration" request with a random `picsum.photos` stock photo
+// reported as `success: true`, next to the real scene prompt.
+async function testProductionWithNoKeyFailsClosedInsteadOfMocking(): Promise<void> {
+  process.env['NODE_ENV'] = 'production';
+  try {
+    const result = await new ImageService().generateImage(createInput());
+    assert(!result.success, 'production with no Grok key should refuse, not mock');
+    assert(result.error?.code === 'AI_UNAVAILABLE', `got ${result.error?.code}`);
+    assert(/XAI_API_KEY/.test(result.error?.message ?? ''), `the message should name what to set (got ${result.error?.message})`);
+  } finally {
+    delete process.env['NODE_ENV'];
+  }
+}
+
+// A production deployment with a configured key must still generate through
+// the real provider path rather than being caught by the guard above.
+async function testProductionWithKeyStillCallsTheProvider(): Promise<void> {
+  const originalPost = axios.post;
+  process.env['NODE_ENV'] = 'production';
+  process.env['XAI_API_KEY'] = 'test-key-not-a-real-credential';
+
+  try {
+    (axios as { post: unknown }).post = async () => ({
+      data: { data: [{ url: 'https://images.example/production-story.png' }] }
+    });
+
+    const result = await new ImageService().generateImage(createInput());
+
+    assert(result.success, `a configured production deployment should still generate an image (got ${JSON.stringify(result.error)})`);
+    assert(
+      (result.data as ImageGenerationSeam['output']).imageUrl === 'https://images.example/production-story.png',
+      'the provider URL should reach the caller unchanged, not the mock picsum.photos fallback'
+    );
+  } finally {
+    (axios as { post: unknown }).post = originalPost;
+    delete process.env['NODE_ENV'];
+    delete process.env['XAI_API_KEY'];
+  }
+}
+
 async function main(): Promise<void> {
   await testEveryCreatureArchetypeReachesThePrompt();
   await testEveryImageStyleIsAcceptedAndDescribedAsItself();
@@ -893,6 +944,8 @@ async function main(): Promise<void> {
   await testProviderFailuresNeverPrintTheApiKey();
   await testOnlyCallerFacingMessagesReachTheEnvelope();
   await testTheRequestIdReachesTheEnvelopeAndTheLog();
+  await testProductionWithNoKeyFailsClosedInsteadOfMocking();
+  await testProductionWithKeyStillCallsTheProvider();
 
   console.log('Image service tests passed');
 }

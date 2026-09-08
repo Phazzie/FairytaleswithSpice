@@ -9,16 +9,42 @@ type StorageResult<T> = {
   message: string;
 };
 
+export type EvictedProjectSummary = Pick<SavedStoryProject, 'id' | 'title'>;
+
+export type SaveProjectResult = {
+  success: true;
+  data: SavedStoryProject;
+  evictedProject: EvictedProjectSummary | null;
+} | {
+  success: false;
+  message: string;
+};
+
+/** Status text plus an optional persistent warning for a local save, given what `saveProject` evicted. */
+export function describeSaveOutcome(evictedProject: EvictedProjectSummary | null, maxProjects: number) {
+  if (!evictedProject) {
+    return { statusMessage: 'Saved in this browser.', evictionWarning: null };
+  }
+
+  return {
+    statusMessage: `Saved in this browser. "${evictedProject.title}" was removed to stay within the ${maxProjects}-story local limit.`,
+    evictionWarning: {
+      title: 'Local story limit reached',
+      message: `This browser only keeps the ${maxProjects} most recently updated saved stories. "${evictedProject.title}" was removed to make room. Save it to the cloud or export it first if you want to keep it.`
+    }
+  };
+}
+
 @Injectable({ providedIn: 'root' })
 export class StoryWorkspaceStorageService {
   private readonly storageKey = 'fairytales_story_lab_projects_v1';
-  private readonly maxProjects = 12;
+  readonly maxProjects = 12;
 
   listProjects(): SavedStoryProject[] {
     return [...this.readProjects()].sort(byNewestUpdateFirst);
   }
 
-  saveProject(project: SavedStoryProject): StorageResult<SavedStoryProject> {
+  saveProject(project: SavedStoryProject): SaveProjectResult {
     if (!this.hasLocalStorage()) {
       return {
         success: false,
@@ -36,9 +62,12 @@ export class StoryWorkspaceStorageService {
       updatedAt: now
     };
     const remainingProjects = this.readProjects().filter(item => item.id !== normalizedProject.id);
-    const nextProjects = [normalizedProject, ...remainingProjects]
-      .sort(byNewestUpdateFirst)
-      .slice(0, this.maxProjects);
+    const sortedProjects = [normalizedProject, ...remainingProjects].sort(byNewestUpdateFirst);
+    const nextProjects = sortedProjects.slice(0, this.maxProjects);
+    const evictedProjects = sortedProjects.slice(this.maxProjects);
+    const evictedProject = evictedProjects.length
+      ? { id: evictedProjects[0].id, title: evictedProjects[0].title }
+      : null;
 
     const writeResult = this.writeProjects(nextProjects);
     if (!writeResult.success) {
@@ -47,7 +76,8 @@ export class StoryWorkspaceStorageService {
 
     return {
       success: true,
-      data: normalizedProject
+      data: normalizedProject,
+      evictedProject
     };
   }
 

@@ -7,6 +7,206 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ***WORST TO BEST*** Local Story Workspace — saving past the browser's twelve-story cap silently deleted the oldest story with no warning (September 8, 2026)
+
+- `StoryWorkspaceStorageService.saveProject()` caps browser-local saves at 12 and trims whichever
+  saved story sorts oldest once that's exceeded, but the success result never reported what it
+  dropped. The only caller, `App.persistSession()`, set the status line to a cheerful "Saved in this
+  browser." even on a save that had just permanently deleted a different story. This is the only save
+  path guest/anonymous sessions get — the equivalent cloud project store had already been fixed for
+  unbounded growth (`postgresStoryProjectStore.ts`), but the local browser store never got the
+  matching UX fix, so a user with 13+ locally saved stories lost their oldest one with zero warning.
+- `saveProject()` now reports the evicted project (id/title) on its result. `App.persistSession()`
+  surfaces it via a new pure `describeSaveOutcome()` helper: the status line names what was removed,
+  and a persistent (non-auto-hiding) notification warns the user and suggests saving to the cloud or
+  exporting first.
+- Added a "`X of 12 local slots used`" indicator next to the saved-stories list, with an extra warning
+  once the cap is reached, so users get advance notice before losing a story, not just a postmortem.
+- Tests: extended `story-workspace-storage.service.spec.ts` to assert the evicted project is reported
+  correctly (and `null` when no eviction happens); added an `app.spec.ts` case asserting a save that
+  crosses the cap fires the warning notification and names the removed story.
+
+### ***WORST TO BEST*** Multi-Voice Audio Narration — the README's flagship feature silently degraded to a single voice for every character in real deployments (September 8, 2026)
+
+- `AudioService.resolveConfiguredVoiceId()`'s only way to give an AI-generated character its own
+  voice was an exact-match `ELEVENLABS_VOICE_<CHARACTER_NAME>` variable, set before deploy. Character
+  names are written fresh by the AI for every story — unbounded and unpredictable — so no operator
+  can realistically pre-register them. Every real deployment sets only `ELEVENLABS_VOICE_DEFAULT`
+  (the README's own documented minimum setup), so every speaker in every story — narrator included,
+  unless `ELEVENLABS_VOICE_NARRATOR` is also set — resolved to the exact same voice. The feature
+  README:24 calls "🎭 Multi-Voice Audio Narration" silently degraded to single-voice-for-everyone in
+  every real deployment, with no UI indication, and `tests/audio-service.test.ts` only ever exercised
+  exact-name overrides and the default fallback — never an unregistered AI-generated name with more
+  than one speaker in real mode.
+- Added a new resolution tier, `ELEVENLABS_VOICE_POOL` — a comma-separated list of real ElevenLabs
+  voice ids an operator configures once, not per character. `parseVoicePool()` trims/dedupes/drops
+  empty entries; `resolvePoolVoiceId()` hashes the speaker name (the same `createHash('sha256')`
+  technique `mockVoiceId()` already uses) to a stable slot in the pool, so the same character always
+  gets the same pool voice across every chapter and continuation, with no state persisted to make
+  that true, and distinct names spread across the pool rather than collapsing onto one.
+- Inserted into `resolveConfiguredVoiceId()`'s existing order, between the narrator-specific check
+  and the final default: caller `voice` override → exact `ELEVENLABS_VOICE_<NAME>` (kept, for pinning
+  a known recurring character) → `ELEVENLABS_VOICE_NARRATOR` (kept) → **pool (new)** →
+  `ELEVENLABS_VOICE_DEFAULT` (kept, final fallback — zero behavior change for operators who don't set
+  the pool). The "no voice configured" error message now mentions `ELEVENLABS_VOICE_POOL` as an
+  option alongside the existing three.
+- Added tests: `resolvePoolVoiceId()` determinism and distribution across distinct names,
+  `parseVoicePool()`'s trim/dedupe/empty-entry handling, the per-character/narrator overrides still
+  winning over the pool, a blank pool falling through to the flat default, and an end-to-end
+  `convertToAudio()` case asserting a multi-speaker chapter with only a pool configured resolves to
+  more than one voice.
+- README's *Custom Voices* section rewritten to lead with the pool as the realistic setup for
+  AI-generated names, keeping the exact-name override documented as a pinning option for a known
+  character.
+
+No change to the caller `voice` override, the per-character/narrator env vars, the mock-mode
+fallback, or `voicesUsed`'s reporting shape — an operator who sets none of the new pool var keeps
+today's exact behavior.
+
+#### Validation
+
+- `npx tsx tests/audio-service.test.ts` passes, including all new pool-resolution cases.
+- `npm run test:all` (backend, 90+ suites) exits `0`.
+
+### ***WORST TO BEST*** Proving Grounds evaluation fallback — a fixed placeholder score/feedback regardless of what story was submitted (September 7, 2026)
+
+- Proving Grounds exists to A/B compare prompt variants by their evaluation score. Whenever
+  `/api/story-lab/evaluate` failed for any reason on the client — a network error, the endpoint's
+  own rate limit (plausible during exactly the back-to-back evaluations an A/B session runs), a
+  400/401/502 refusal — `PromptEvaluationService.getMockEvaluation()` substituted five hardcoded
+  constants: score `75`, the same three strengths, weaknesses, and suggestions, and the same
+  feedback sentence, verbatim, no matter what story content was submitted. Two different prompt
+  variants hitting this fallback were indistinguishable, silently defeating the comparison the tool
+  exists to make.
+- The server already had a better answer for its own "no `XAI_API_KEY`" mock path: it attaches a
+  real `heuristicReport` — a deterministic 7-dimension scan of the actual submitted story
+  (`buildStoryQualityHeuristicReport`) — computed by `api/_lib/story-lab/evaluation/storyQualityHeuristics.ts`.
+  That module lived in a Node-only tree the Angular client cannot import, so the client's own
+  fallback (triggered far more often — any failure, not just a missing key) had no equivalent and
+  stayed static.
+- Moved `buildStoryQualityHeuristicReport` — and its three pure-string dependencies
+  `collapseWhitespace`, `escapeRegExp`, and `wholeWordPattern`/`wholeWordAlternationPattern` — into
+  `shared/`, alongside the `StoryQualityDimensionId`/`StoryQualityDimensionScore`/
+  `StoryQualityHeuristicReport` types (previously declared inline in the frontend's `contracts.ts`).
+  This follows the repo's existing convention for logic used by both the server and the client
+  (`shared/storyTextBlocks.ts`, `shared/wordInflections.ts`). Updated the resulting import sites in
+  `continuationGuidance.ts`, `storyContentAnalysis.ts`, `storyService.ts`, `cliffhangerService.ts`,
+  `storyLabEngine.ts`, `storyStateBuilder.ts`, `evaluate.ts`, and three test files — mechanical path
+  changes, no behavior change to any of them.
+- `PromptEvaluationService.getMockEvaluation()` now runs `buildStoryQualityHeuristicReport` against
+  the actual submitted story and configuration: `score` comes from the report's `overallScore`,
+  `strengths`/`weaknesses` are the highest/lowest-scoring dimensions with their real rationale, and
+  `suggestions` are phrased as actionable improvements on the weakest ones. `heuristicReport` is now
+  attached on the client fallback too, matching the server's own mock path. `overallFeedback` names
+  that no AI evaluation was available rather than describing a story it never read.
+- Added a test asserting two different stories produce different fallback scores/strengths (the
+  concrete regression this closes), and a test asserting the fallback's `heuristicReport`/`score`
+  match a direct call to `buildStoryQualityHeuristicReport` for the same input. The existing
+  determinism test (same story → same fallback content) and the `isMockEvaluation`/
+  `mockEvaluationReason` tests are unchanged and still pass.
+
+No change to the real Grok-backed evaluation path, the server's own mock response shape, or any
+HTML/template — `heuristicReport`/`score` were already rendered wherever present.
+
+#### Validation
+
+- `npm run test:all` (backend, 90+ suites) exits `0`.
+- `npx tsc --noEmit -p tsconfig.app.json` and `-p tsconfig.spec.json` (frontend) both clean.
+- `ng test --watch=false --browsers=ChromeHeadlessNoSandbox` (frontend unit suite) green.
+
+### ***WORST TO BEST*** `TropeSubversionService` — a third of its surface was dead code, untested config, or more machinery than the job needed (September 7, 2026)
+
+- `getAllTropesForCreature()` and `getTropeStatistics()` had zero callers anywhere in the repo,
+  including their own test file. Not a new finding: `PR70_RECOVERY_CHANGELOG.md` already flagged
+  both, plus the unread `timestamp` field below, as dead surface while tracing an unrelated trope-count
+  bug, filed as "the shape of #281" and never actioned. Both are now deleted.
+- `serializeTropeSelection` wrote a `timestamp` that `deserializeTropeSelection` never read — dead
+  data shipped on every serialized selection (persisted in every generated story's `tropeMetadata`).
+  Removed.
+- `avoidCategories` (on `TropeSubversionOptions` and `createWeightedTropePool`) had zero production
+  callers — `StoryService.selectTropeSubversions`, the only real caller, passes just `creature` — and
+  zero test coverage. Unlike `preferredIntensity`, which a dedicated regression test guards against a
+  real historical bug, nobody would have noticed `avoidCategories` silently breaking. Removed.
+- `selectRandomTropes` removed every duplicate of a drawn trope id with a manual reverse `for` +
+  `splice`, nested inside the outer `while` — more machinery than a "remove all copies of this id"
+  job needs. Replaced with a single `.filter()` pass per draw; same behavior, no nested-loop shape.
+- Added a direct assertion to `tests/trope-subversion.test.ts` that a serialized selection no longer
+  carries a `timestamp` key. The existing suite already asserted on selection count/distinctness
+  rather than the removal mechanism, so it validates the `selectRandomTropes` refactor unchanged.
+
+Scope stayed inside `tropeSubversionService.ts` and its test file — nothing outside the service read
+any of the removed surface.
+
+#### Validation
+
+- `npm run test:tropes` and `npm run test:all` both exit `0`.
+
+### ***WORST TO BEST*** `ImageService` — silently served fake stock photos as "AI art" in production when `XAI_API_KEY` was missing (September 7, 2026)
+
+- This repo's rule for a missing provider key on a paid-generation service — `StoryService`,
+  `storyLabEngine`, and `AudioService` all fail closed with `AI_UNAVAILABLE` rather than silently
+  returning mock content as real output — was never applied to `ImageService`. `callGrokImageAI`
+  fell back to `generateMockImageUrl` whenever `XAI_API_KEY` was unset, which returns a random
+  `https://picsum.photos/{width}/{height}?random={uuid}` stock photo with zero relation to the
+  story. `api/image/generate.ts` added no guard of its own, so a production deployment missing the
+  key answered every "Chapter Illustration" request with `success: true`, a fake stock photo, and
+  the real, correct scene `prompt` text sitting right next to it — indistinguishable from a genuine
+  generation. The frontend rendered it as the chapter's AI illustration, and `story-html-exporter.ts`
+  baked it into exported HTML/EPUB as if it were real AI art of the reader's own scene.
+- Untested: `tests/image-service.test.ts` (900+ lines) exercised the mock path only for local/dev
+  correctness (dimensions, prompt content), never what happens in production without a key — unlike
+  `tests/audio-service.test.ts`, which already asserted `AI_UNAVAILABLE` for the equivalent case.
+- Added `isProductionRuntime()` to `ImageService`, identical to the existing checks on
+  `StoryService`/`storyLabEngine`/`AudioService`. `generateImage` now returns `AI_UNAVAILABLE`
+  (mapped to HTTP 503 by the existing `apiResponseStatus` table) when the key is missing in
+  production, naming `XAI_API_KEY` in the message. The mock path is unchanged outside production, so
+  local/dev/test behavior is untouched.
+- Added two tests to `tests/image-service.test.ts`: production with no key fails closed with
+  `AI_UNAVAILABLE`, and production with a key present still calls the real provider path (not the
+  mock fallback).
+
+#### Validation
+
+- `npm run test:image-service`, `npm run test:audio-service`, and `npm run test:all` all exit `0`.
+
+### ***WORST TO BEST*** Story Lab's real-engine `StoryStateDelta` (`storyStateBuilder.ts`, `storyLabEngine.ts`) — the per-batch "what changed" payload that always claimed nothing changed (September 6, 2026)
+
+- `stateDelta` is the field of every Story Lab genesis/continuation response that tells the caller
+  what a batch actually did to the story: which characters were introduced or updated, which
+  threads resolved or escalated, which artifacts were foreshadowed. On the real (Grok-backed)
+  engine it was frozen at empty/placeholder values forever — `buildChapterDelta` unconditionally
+  returns `introducedCharacters: []`, `resolvedThreads: []`, `foreshadowedArtifacts: []`, and one
+  hardcoded `escalatedThreads` id, and `enrichContinuity` only ever copied `continuityWarnings`
+  back out of the real AI continuity extraction, leaving the other five fields exactly as
+  `buildChapterDelta` had guessed them before extraction ran.
+- The tell: `mockData.ts`'s own `buildStateDelta` (the offline/no-API-key demo path) diffs
+  `fromState` against `toState` to compute `updatedCharacters` correctly — so the free demo mode
+  honestly reported state changes while the paid production engine's response always claimed zero
+  characters introduced, zero threads resolved, zero artifacts foreshadowed, regardless of what
+  happened. Untested: every existing test of `generateStoryLabGenesis`/`continueStoryLab` passes a
+  `serviceFactory` stub, which forces `enrichContinuity`'s AI branch off, so this gap was invisible
+  to the suite.
+- Added `deriveContinuityDelta(fromState, toState)` to `storyStateBuilder.ts`, generalizing
+  `mockData.ts`'s one correct diff to all five fields: characters/artifacts present in `toState`
+  but not `fromState` are introduced/foreshadowed; a character present in both whose serialized
+  form differs is updated; a thread whose status newly became `resolved`/`escalating` (and wasn't
+  already) is reported resolved/escalating.
+- Wired it into `enrichContinuity`: both call sites (`generateStoryLabGenesis` passing `null`,
+  `continueStoryLab` passing the request's `storyState`) now hand it the pre-batch snapshot, and
+  `stateDelta` is rebuilt from `deriveContinuityDelta(previousState, extraction.state)` — the state
+  *after* AI continuity extraction has run — instead of staying frozen at the placeholder values.
+  A genesis batch's blueprint-seeded protagonist/antagonist now correctly appears in
+  `introducedCharacters` too, instead of never being reported at all.
+- Added unit tests to `tests/story-lab-state-builder.test.ts`: genesis (`fromState` null) reporting
+  everything as introduced, a continuation identifying exactly what changed (including an
+  already-escalating thread not being reported a second time), and a test chaining the
+  already-tested `mergeAiContinuity` into a `toState` to prove the merge and the delta agree.
+
+#### Validation
+
+- `npm run test:all` exits `0` across every registered suite, including the three new
+  `story-lab-state-builder` cases.
+
 ### 🐛 The export tokenizer ended a tag at the first `>` rather than at the tag's own (August 28, 2026)
 
 - A tag does not end at the first `>` — it ends at the first `>` that is not inside

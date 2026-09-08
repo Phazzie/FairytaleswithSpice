@@ -5,7 +5,9 @@ import {
   AudioService,
   isRetryableElevenLabsError,
   MAX_AUDIO_SEGMENTS,
-  parseAudioSegments
+  parseAudioSegments,
+  parseVoicePool,
+  resolvePoolVoiceId
 } from '../api/_lib/services/audioService';
 import { AUDIO_FORMATS, AudioConversionSeam } from '../api/_lib/types/contracts';
 
@@ -17,6 +19,7 @@ delete process.env['ELEVENLABS_API_KEY'];
 delete process.env['ELEVENLABS_VOICE_NARRATOR'];
 delete process.env['ELEVENLABS_VOICE_DEFAULT'];
 delete process.env['ELEVENLABS_VOICE_LORD_DAMIEN'];
+delete process.env['ELEVENLABS_VOICE_POOL'];
 // `isProductionRuntime()` reads these from ambient `process.env`, the same
 // gap `tests/api-access-control.test.ts` pins `RATE_LIMIT_STORE` against —
 // an ambient `NODE_ENV=production` in whatever runs this suite would turn
@@ -148,6 +151,113 @@ async function testDefaultVoiceEnvVarAloneCoversTheNarrator(): Promise<void> {
     assert(voices.includes('operator_default_voice'), `the default voice should be used for the narrator (got ${JSON.stringify(voices)})`);
   } finally {
     delete process.env['ELEVENLABS_VOICE_DEFAULT'];
+  }
+}
+
+// `ELEVENLABS_VOICE_POOL` is the realistic setup for AI-generated character
+// names, which can't be pre-registered one env var at a time: the same
+// speaker must always land on the same pool voice, called twice with no
+// state carried between the calls.
+function testPoolVoiceResolutionIsDeterministic(): void {
+  const pool = ['voice_a', 'voice_b', 'voice_c'];
+  const first = resolvePoolVoiceId('Lord Damien', pool);
+  const second = resolvePoolVoiceId('Lord Damien', pool);
+  assert(first !== null, 'a non-empty pool should resolve a voice');
+  assert(first === second, `the same speaker should resolve to the same pool voice every time (got ${first} then ${second})`);
+}
+
+// A pool that only ever answered its first entry would be indistinguishable
+// from `ELEVENLABS_VOICE_DEFAULT` — the whole point of a pool over a single
+// default is that distinct names actually spread across it.
+function testPoolVoiceResolutionDistributesAcrossDistinctNames(): void {
+  const pool = ['voice_a', 'voice_b', 'voice_c'];
+  const names = Array.from({ length: 30 }, (_, index) => `Character ${index}`);
+  const resolved = new Set(names.map(name => resolvePoolVoiceId(name, pool)));
+  assert(resolved.size > 1, `30 distinct names should not all collapse onto one pool voice (got ${JSON.stringify([...resolved])})`);
+  for (const voice of resolved) {
+    assert(pool.includes(voice as string), `every resolved voice should come from the pool (got ${voice})`);
+  }
+}
+
+function testPoolVoiceResolutionIsNullForAnEmptyPool(): void {
+  assert(resolvePoolVoiceId('Anyone', []) === null, 'an empty pool should resolve to null, not throw or pick a phantom entry');
+}
+
+// Operator input is a raw comma-separated string, not a pre-cleaned array —
+// stray whitespace and a trailing comma are the realistic shape of a
+// hand-edited env var, and a repeated id shouldn't get a repeated (and
+// therefore over-weighted) slot.
+function testVoicePoolParsingTrimsDedupesAndDropsEmptyEntries(): void {
+  assert(
+    JSON.stringify(parseVoicePool(' voice_a ,voice_b,, voice_a ,voice_c,')) === JSON.stringify(['voice_a', 'voice_b', 'voice_c']),
+    'parseVoicePool should trim whitespace, dedupe repeats, and drop empty entries'
+  );
+  assert(JSON.stringify(parseVoicePool(undefined)) === JSON.stringify([]), 'an unset pool should parse to an empty array');
+  assert(JSON.stringify(parseVoicePool(' , , ')) === JSON.stringify([]), 'a pool of only whitespace/empty entries should parse to an empty array');
+}
+
+// The pool sits between the narrator override and the final default in
+// `resolveConfiguredVoiceId`'s order: a more specific override (per-character,
+// narrator) still wins over it, and it still catches speakers neither of
+// those named before falling through to the flat default.
+async function testVoicePoolFillsInForSpeakersWithNoMoreSpecificOverride(): Promise<void> {
+  process.env['ELEVENLABS_VOICE_POOL'] = 'pool_voice_1,pool_voice_2';
+  process.env['ELEVENLABS_VOICE_LORD_DAMIEN'] = 'pinned_voice_for_lord_damien';
+  try {
+    const result = await new AudioService().convertToAudio(createInput({
+      content: '<p>[Lord Damien]: "I am pinned."</p><p>[Mira]: "I am not."</p>'
+    }));
+    assert(result.success, `pool + per-character voices together should still succeed (got ${JSON.stringify((result as { error?: unknown }).error)})`);
+    const voices = (result.data as AudioConversionSeam['output']).voiceUsed;
+    assert(voices.includes('pinned_voice_for_lord_damien'), `the per-character pin should still win over the pool (got ${JSON.stringify(voices)})`);
+    assert(
+      voices.includes('pool_voice_1') || voices.includes('pool_voice_2'),
+      `Mira, with no more specific override, should resolve into the pool (got ${JSON.stringify(voices)})`
+    );
+  } finally {
+    delete process.env['ELEVENLABS_VOICE_POOL'];
+    delete process.env['ELEVENLABS_VOICE_LORD_DAMIEN'];
+  }
+}
+
+// A pool of only whitespace/empty entries is indistinguishable from an unset
+// one — it should fall through to `ELEVENLABS_VOICE_DEFAULT`, not resolve to
+// `undefined` or throw.
+async function testBlankVoicePoolFallsThroughToTheDefaultVoice(): Promise<void> {
+  process.env['ELEVENLABS_VOICE_POOL'] = ' , , ';
+  process.env['ELEVENLABS_VOICE_DEFAULT'] = 'operator_default_voice';
+  try {
+    const result = await new AudioService().convertToAudio(createInput({
+      content: '<p>[Narrator]: Only the narrator speaks here.</p>'
+    }));
+    assert(result.success, `a blank pool should still fall through to the default voice (got ${JSON.stringify((result as { error?: unknown }).error)})`);
+    const voices = (result.data as AudioConversionSeam['output']).voiceUsed;
+    assert(voices.includes('operator_default_voice'), `a blank pool should behave as unset, falling through to the default (got ${JSON.stringify(voices)})`);
+  } finally {
+    delete process.env['ELEVENLABS_VOICE_POOL'];
+    delete process.env['ELEVENLABS_VOICE_DEFAULT'];
+  }
+}
+
+// End-to-end: an operator who only sets `ELEVENLABS_VOICE_POOL` (no
+// per-character overrides) should get more than one distinct voice out of a
+// multi-speaker chapter — the scaling flaw this pool exists to close.
+async function testMultiSpeakerChapterUsesMoreThanOneVoiceWithOnlyAPoolConfigured(): Promise<void> {
+  process.env['ELEVENLABS_VOICE_POOL'] = 'pool_voice_1,pool_voice_2,pool_voice_3';
+  try {
+    const result = await new AudioService().convertToAudio(createInput({
+      content: '<p>[Narrator]: The candles guttered.</p>'
+        + '<p>[Lord Damien]: "Come closer."</p>'
+        + '<p>[Mira]: "Are you certain?"</p>'
+    }));
+    assert(result.success, `a pool-only configuration should still succeed (got ${JSON.stringify((result as { error?: unknown }).error)})`);
+    const voices = (result.data as AudioConversionSeam['output']).voiceUsed;
+    assert(voices.length > 1, `three distinct speakers with only a pool configured should not collapse onto one voice (got ${JSON.stringify(voices)})`);
+    for (const voice of voices) {
+      assert(['pool_voice_1', 'pool_voice_2', 'pool_voice_3'].includes(voice), `every resolved voice should come from the configured pool (got ${voice})`);
+    }
+  } finally {
+    delete process.env['ELEVENLABS_VOICE_POOL'];
   }
 }
 
@@ -445,6 +555,13 @@ async function main(): Promise<void> {
   await testProductionWithNoKeyFailsClosedInsteadOfMocking();
   await testRealModeRequiresAConfiguredVoice();
   await testDefaultVoiceEnvVarAloneCoversTheNarrator();
+  testPoolVoiceResolutionIsDeterministic();
+  testPoolVoiceResolutionDistributesAcrossDistinctNames();
+  testPoolVoiceResolutionIsNullForAnEmptyPool();
+  testVoicePoolParsingTrimsDedupesAndDropsEmptyEntries();
+  await testVoicePoolFillsInForSpeakersWithNoMoreSpecificOverride();
+  await testBlankVoicePoolFallsThroughToTheDefaultVoice();
+  await testMultiSpeakerChapterUsesMoreThanOneVoiceWithOnlyAPoolConfigured();
   await testDurationEstimateUsesTheProvidersEffectiveSpeedInRealMode();
   await testTooManySpeakerSegmentsIsRejected();
   await testConsecutiveSameSpeakerParagraphsAreCoalescedForTheSegmentCap();

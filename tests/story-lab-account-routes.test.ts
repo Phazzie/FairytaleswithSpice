@@ -6,6 +6,7 @@ import accountHandler from '../api/story-lab/account';
 import healthHandler from '../api/health';
 import type { AuthUser } from '../api/_lib/story-lab/auth/authPort';
 import { createStoryLabAccountRouteHandler } from '../api/_lib/story-lab/account/accountRouteHandlers';
+import { createStoryLabCloudStorage } from '../api/_lib/story-lab/storage/storyLabCloudStorageConfig';
 import { createStaticAuthPort } from './helpers/storyLabAuthFixtures';
 import { createNonDurableInMemoryStoryLabProfileStore } from '../api/_lib/story-lab/profile/inMemoryStoryLabProfileStore';
 import { createDefaultStoryLabUserProfile } from '../api/_lib/story-lab/profile/storyLabProfileStore';
@@ -82,6 +83,7 @@ async function main() {
   await testOptionsCorsPreflightUsesCredentialedPolicy();
   await testDisallowedCorsOriginFailsClosed();
   await testProfileReadWriteUsesAuthenticatedOwner();
+  await testDefaultAccountHandlerSharesNonDurableStorageWithGenerationRoutes();
   await testProfileCrossOwnerSaveIsForbidden();
   await testProfileSaveAllowsMissingOptionalTimestamps();
   await testMalformedProfileBodyFailsClosed();
@@ -192,6 +194,39 @@ async function testProfileReadWriteUsesAuthenticatedOwner() {
   await handler(createRequest('GET', 'profile'), loadResponse);
   const loadBody = loadResponse.body as any;
   assert(loadBody.data.displayName === 'Avery', 'profile load should return persisted profile');
+}
+
+// Every other test in this file injects its own fresh in-memory profile/
+// project stores, bypassing `createStoryLabCloudStorage`'s own mode
+// resolution and shared singleton entirely — so none of them would have
+// caught the actual bug found on this PR: `createStoryLabAccountRouteHandler()`
+// used to always construct and pass its own `now` closure to
+// `createStoryLabCloudStorage`, even when its own caller supplied none, which
+// took the account route off the shared `non_durable_memory` singleton every
+// other route (job/genesis/continuation) uses — a profile saved through this
+// exact handler would have loaded as `null` from generation, in the same
+// process. This test builds the real, unmodified account route handler (no
+// `profileStore`/`projectStore` override) against `STORY_LAB_CLOUD_STORAGE=
+// non_durable_memory`, and checks a profile it saves is visible through a
+// separate, bare `createStoryLabCloudStorage()` call — exactly how a
+// generation route reads it.
+async function testDefaultAccountHandlerSharesNonDurableStorageWithGenerationRoutes() {
+  const handler = createStoryLabAccountRouteHandler({
+    authPort: createStaticAuthPort(owner),
+    env: { STORY_LAB_CLOUD_STORAGE: 'non_durable_memory' }
+  });
+
+  const profile = createDefaultStoryLabUserProfile(owner, { displayName: 'Wren' });
+  const saveResponse = new FakeResponse();
+  await handler(createRequest('PUT', 'profile', { profile }), saveResponse);
+  assert(saveResponse.statusCode === 200, 'profile save through the real account handler should return 200');
+
+  const generationRouteStorage = createStoryLabCloudStorage({ env: { STORY_LAB_CLOUD_STORAGE: 'non_durable_memory' } });
+  const loadResult = await generationRouteStorage.profileStore.loadProfile(owner);
+  assert(
+    loadResult.success && loadResult.data?.profile.displayName === 'Wren',
+    'a bare createStoryLabCloudStorage() call, as a generation route makes, should see the account handler\'s save'
+  );
 }
 
 async function testProfileCrossOwnerSaveIsForbidden() {
@@ -1156,6 +1191,16 @@ async function testHealthReportsTheOriginTheCorsPolicyResolved() {
   delete process.env['STORY_LAB_ALLOWED_ORIGINS'];
   delete process.env['FRONTEND_URL'];
   process.env['ALLOWED_ORIGINS'] = configuredOrigin;
+  // Cloud storage's default mode is `postgres` (see storyLabCloudStorageConfig.ts),
+  // and its own `non_durable_memory` mode counts as degraded too (the Angular
+  // client treats that storage mode as unavailable — see api/health.ts's
+  // `isStoryLabCloudStorageDegraded`). This test only cares about CORS-origin
+  // reporting, so give it a reachable postgres config to keep it out of the
+  // response's degraded/health status entirely.
+  const originalCloudStorageMode = process.env['STORY_LAB_CLOUD_STORAGE'];
+  const originalDatabaseUrl = process.env['DATABASE_URL'];
+  process.env['STORY_LAB_CLOUD_STORAGE'] = 'postgres';
+  process.env['DATABASE_URL'] = 'postgresql://user:password@example.invalid/story_lab';
 
   try {
     const response = new FakeResponse();
@@ -1176,6 +1221,8 @@ async function testHealthReportsTheOriginTheCorsPolicyResolved() {
     restoreEnv('ALLOWED_ORIGINS', originalAllowedOrigins);
     restoreEnv('STORY_LAB_ALLOWED_ORIGINS', originalStoryLabOrigins);
     restoreEnv('FRONTEND_URL', originalFrontendUrl);
+    restoreEnv('STORY_LAB_CLOUD_STORAGE', originalCloudStorageMode);
+    restoreEnv('DATABASE_URL', originalDatabaseUrl);
   }
 }
 

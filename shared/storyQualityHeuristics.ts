@@ -1,12 +1,8 @@
-import type {
-  StoryQualityDimensionScore,
-  StoryQualityHeuristicReport
-} from '../contracts';
-import { splitStoryIntoTextBlocks } from '../../../../shared/storyTextBlocks';
-import { WORD_INFLECTION_SUFFIX_PATTERN } from '../../../../shared/wordInflections';
-import { collapseWhitespace } from '../../utils/whitespace';
-import { escapeRegExp } from '../../utils/regexEscape';
-import { wholeWordAlternationPattern, wholeWordPattern } from '../../utils/wholeWord';
+import { splitStoryIntoTextBlocks } from './storyTextBlocks';
+import { WORD_INFLECTION_SUFFIX_PATTERN } from './wordInflections';
+import { collapseWhitespace } from './whitespace';
+import { escapeRegExp } from './regexEscape';
+import { wholeWordAlternationPattern, wholeWordPattern } from './wholeWord';
 
 export interface StoryQualityHeuristicInput {
   storyContent: string;
@@ -16,6 +12,42 @@ export interface StoryQualityHeuristicInput {
     spicyLevel: number;
     wordCount: number;
   };
+}
+
+/**
+ * The seven advisory dimensions `buildStoryQualityHeuristicReport` scores.
+ *
+ * Declared here rather than in either app's `contracts.ts` because this is the
+ * one file both sides need it from: the server attaches a `heuristicReport` to
+ * every `/api/story-lab/evaluate` response, and the client's own offline
+ * fallback (`PromptEvaluationService.getMockEvaluation`) needs the same
+ * deterministic scan run directly in the browser, on the same story, so a
+ * comparison in Proving Grounds is never two identical placeholders regardless
+ * of which side computed it.
+ */
+export type StoryQualityDimensionId =
+  | 'continuity'
+  | 'cliffhanger_quality'
+  | 'trope_freshness'
+  | 'emotional_variety'
+  | 'character_consistency'
+  | 'prose_quality'
+  | 'audio_readiness';
+
+export interface StoryQualityDimensionScore {
+  id: StoryQualityDimensionId;
+  label: string;
+  score: number;
+  rationale: string;
+  signals: string[];
+}
+
+export interface StoryQualityHeuristicReport {
+  source: 'heuristic';
+  heuristicOnly: true;
+  overallScore: number;
+  dimensions: StoryQualityDimensionScore[];
+  summary: string;
 }
 
 type DimensionDraft = Omit<StoryQualityDimensionScore, 'score'> & {
@@ -759,7 +791,7 @@ function normalizeProseForScanning(value: string): string {
  * lexicons' own ASCII words; it is the prose around them that is not
  * guaranteed to be.
  *
- * That reading is now `api/_lib/utils/wholeWord.ts`'s, which is what the three
+ * That reading is now `shared/wholeWord.ts`'s, which is what the three
  * scans that still spelled the boundary `\b` — the content analysis, the
  * pressure keywords, and the cliffhanger hooks — were moved onto. This one was
  * already right; what changes is that it is no longer the only one.

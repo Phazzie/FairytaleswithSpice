@@ -210,25 +210,4 @@ describe('GenerationLogicService', () => {
     expect(logic.chekovElements.length).toBe(2);
   });
 
-  it('summarizeLogic renders the author styles, beat structure, and Chekov elements as readable text', () => {
-    const logic = service.generateRandomLogic('demon');
-
-    const summary = service.summarizeLogic(logic);
-
-    expect(summary).toContain('Author styles:');
-    expect(summary).toContain(logic.selectedAuthors[0].author);
-    expect(summary).toContain(`Beat structure: ${logic.selectedBeatStructure.name}`);
-    expect(summary).toContain('Chekov elements:');
-    expect(summary).toContain(logic.chekovElements[0].description);
-  });
-
-  it('summarizeLogic reports "none selected" when there are no author styles', () => {
-    const summary = service.summarizeLogic({
-      selectedAuthors: [],
-      selectedBeatStructure: service.getAllBeatStructures()[0],
-      chekovElements: []
-    });
-
-    expect(summary).toContain('Author styles: none selected.');
-  });
 });

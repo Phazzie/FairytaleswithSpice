@@ -548,3 +548,48 @@ against `withContinuationStrategyBrief`'s existing combined behavior),
 `tests/story-lab-real-engine.test.ts` and `tests/story-quality-evals.test.ts`
 (engine wiring, `continuityState` built correctly from a real
 `StoryStateSnapshot`). All in `test:all`.
+
+## Continuation prompt: Proving Grounds' "Current Production" baseline packed the real prompt into the field meant to override it
+
+`narrativeDirectives` (`STORY_BLUEPRINT_LIMITS.maxNarrativeDirectivesLength`,
+1,200 chars) is the blueprint's own free-text override — a caller's chance to
+add or replace directive text on top of whatever `StoryService` builds as the
+production system prompt. `story-generator/src/app/proving-grounds/*`, the
+prompt A/B-testing tool, used this same field for something it was never sized
+for: packing the *entire* filled system+user prompt of whichever template the
+reader had selected, including the "Current Production" template, into it. The
+production system+user prompt runs to roughly 10,500 characters — about nine
+times the cap — so the page's own default configuration hit `400
+INVALID_INPUT` on every fresh load and could never generate a single story.
+Nothing about the blueprint contract itself was wrong; the caller was using
+`narrativeDirectives` to restate a prompt the request was already going to get
+from the server unconditionally, rather than to override it.
+
+The fix is entirely on the caller's side of that same, unchanged contract. The
+unmodified "Current Production" template now sends no `narrativeDirectives` at
+all — a request with no override *is* what "current production" means, since
+`StoryService.buildProductionSystemPrompt()` already runs unconditionally
+server-side regardless of what a caller sends. An experimental template, or
+"Current Production" once the reader edits its own text (at which point it is
+no longer a baseline but a variant), still sends `system + user` through
+`narrativeDirectives` — the only real override channel the blueprint route
+exposes — now stripped of a literal `'PROVING GROUNDS TEST'` label and a
+generation-logic summary that used to ride along and spend part of the same
+1,200-character budget on text that was not the prompt under test.
+
+No blueprint parsing, validation, or prompt-assembly code changed — this is a
+caller correcting its own use of an existing field, not a new contract or a
+changed one. Recorded here because it is exactly the class of "prompt
+contracts / model request shape" change this document tracks, even though the
+caller in question is a test tool rather than the reader-facing generation
+flow.
+
+Validation: `story-generator/src/app/proving-grounds/proving-grounds.spec.ts`
+(the baseline sends no override and can generate; an experimental template's
+`narrativeDirectives` is exactly `system + user`; editing "Current
+Production" is treated as a variant and reports the resulting overflow) and
+`tests/proving-grounds-production-prompt.test.ts` (unchanged — still asserts
+neither side transcribes the production prompt). Full `test:all` and the
+Angular suite both green; see `PR70_RECOVERY_CHANGELOG.md`'s PR #345 entry for
+the rest of that slice (the prompt-preview panel, focus handling, and mock-
+generation marking, none of which touch a prompt contract).

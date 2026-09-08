@@ -23,7 +23,7 @@
 
 ### 🎭 **Multi-Voice Audio Narration (Preview)**
 - **Speaker Tag Recognition**: Reads the `[Character]:` / `[Character, voice: …]:` / `[Narrator]:` tags the story generator already writes into every chapter
-- **Character-Specific Voices**: Set an `ELEVENLABS_VOICE_<CHARACTER_NAME>` variable per character, with narrator/default fallbacks — see **Custom Voices** below
+- **Character-Specific Voices**: Configure a shared `ELEVENLABS_VOICE_POOL` once and every AI-generated character name spreads across it, or pin a known recurring character with an `ELEVENLABS_VOICE_<CHARACTER_NAME>` override — see **Custom Voices** below
 - **Seamless Audio Merging**: Concatenates every speaker's line into one continuous narration, in the order the excerpt reads
 - **ElevenLabs Integration, With a Dev/Test Mock Fallback**: Real text-to-speech behind `ELEVENLABS_API_KEY`; without one, a deterministic silent narration of the same length in development and tests, so the feature is fully testable offline. A production deployment with no key answers `AI_UNAVAILABLE` instead — it never narrates silence and calls it a success.
 - **Narrates an opening excerpt, not the whole chapter**: the response is one inline audio file, capped at ~3 minutes of narration so it fits safely in a single API response — this app's shortest chapter (600 words) is already longer than that. Narrating a full chapter needs stored, URL-delivered audio instead, which is real follow-up work.
@@ -84,6 +84,18 @@ CRITICAL_ALERT_WEBHOOK_URL=https://hooks.slack.com/services/your/webhook/url
 
 # Development settings
 NODE_ENV=development
+
+# Optional: Story Lab cloud storage (signed-in profile + project library).
+# Defaults to `postgres` (requires DATABASE_URL) since that has always been
+# this store's only implementation; an unset DATABASE_URL degrades
+# `/api/health` (503) rather than silently erroring on every profile/project
+# request. `non_durable_memory` is a local/test convenience only, not a
+# supported production fallback: it keeps the backend from hard-erroring
+# without a database, but the Angular client already treats that mode as
+# unavailable (a signed-in library that can't actually save or sync), so
+# `/api/health` also reports it as degraded rather than healthy — see the
+# Health Check section.
+STORY_LAB_CLOUD_STORAGE=postgres
 ```
 
 ### 4. Run in Development Mode
@@ -345,10 +357,19 @@ cd tests && npm run test:integration
 GET /api/health
 ```
 Returns `200` with `status: "healthy"` normally, or `503` with `status: "degraded"`
-when the rate-limit store or Story Lab job store is misconfigured (an unsupported
-mode value, or `postgres` mode with no reachable database). Falling back to the
-in-memory/non-durable default is not itself degraded — only an unreachable
-`postgres` mode or an invalid mode value is.
+when the rate-limit store, Story Lab job store, or Story Lab cloud storage
+(signed-in profile/project library) is misconfigured. Falling back to the
+in-memory/non-durable default is not itself degraded for the rate-limit store
+or job store — those keep doing their actual job (per-instance rate limiting,
+in-process job progress) either way, so only an unsupported mode value or an
+unreachable `postgres` mode degrades them. Story Lab cloud storage is the one
+exception: its default mode is `postgres`, not a non-durable fallback (see
+Environment Setup above), and its `non_durable_memory` mode is *also*
+degraded rather than healthy — unlike the other two stores' non-durable
+defaults, this one means the signed-in profile/project library itself
+doesn't work for its purpose (the Angular client's own `CloudLibraryService`
+already treats that storage mode as unavailable). So this field is healthy
+only in a reachable `postgres` mode.
 
 `services.criticalAlerting` reports where `logCritical(...)` calls are actually
 delivered right now: `{ mode: "console" }` by default, or `{ mode: "webhook",
@@ -407,12 +428,18 @@ Content-Type: application/json
 3. Update story generation prompts
 
 ### **Custom Voices**
-`AudioService` resolves each speaker tag to a voice in this order: the caller's `voice` override, a per-character variable named after the speaker, then a narrator/default fallback (`ELEVENLABS_VOICE_NARRATOR`/`ELEVENLABS_VOICE_DEFAULT`). The deterministic id after that is a **mock-mode-only** fallback — it is never a real ElevenLabs voice, so with `ELEVENLABS_API_KEY` set, a speaker that reaches it instead fails the request with a configuration error naming the speaker. A production deployment needs at least `ELEVENLABS_VOICE_DEFAULT` set, or every speaker mapped individually. Set environment variables to configure real ElevenLabs voices:
+Character names are written by the AI fresh for every story, so pre-registering an env var per name isn't realistic — the setup most deployments actually want is `ELEVENLABS_VOICE_POOL`, a fixed set of real voice ids configured once:
+```env
+ELEVENLABS_VOICE_POOL=your_voice_id_1,your_voice_id_2,your_voice_id_3
+ELEVENLABS_VOICE_NARRATOR=your_voice_id
+```
+Each speaker's name is hashed to a stable slot in the pool, so the same character gets the same voice across every chapter and continuation of a story, and distinct characters spread across the pool rather than collapsing onto one voice.
+
+For a known, recurring character you want pinned to a specific voice regardless of the pool, set a per-character override named after them:
 ```env
 ELEVENLABS_VOICE_LORD_DAMIEN=your_voice_id
-ELEVENLABS_VOICE_NARRATOR=your_voice_id
-ELEVENLABS_VOICE_DEFAULT=your_voice_id
 ```
+`AudioService` resolves each speaker tag to a voice in this order: the caller's `voice` override, the per-character override, `ELEVENLABS_VOICE_NARRATOR` for the narrator specifically, `ELEVENLABS_VOICE_POOL`, then a flat `ELEVENLABS_VOICE_DEFAULT` fallback for anyone still unresolved. The deterministic id after that is a **mock-mode-only** fallback — it is never a real ElevenLabs voice, so with `ELEVENLABS_API_KEY` set, a speaker that reaches it instead fails the request with a configuration error naming the speaker. A production deployment needs at least one of `ELEVENLABS_VOICE_DEFAULT` or `ELEVENLABS_VOICE_POOL` set.
 
 ### **New Export Formats**
 Extend the export service with additional format handlers following the existing seam contract pattern.

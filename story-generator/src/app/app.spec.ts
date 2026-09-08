@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { ComponentFixture, DeferBlockState, fakeAsync, TestBed, tick } from '@angular/core/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { ActivatedRoute, convertToParamMap, ParamMap } from '@angular/router';
@@ -1437,6 +1438,44 @@ describe('App', () => {
     expect(component.cloudLibrarySyncState().mode).toBe('cloud_synced');
   });
 
+  it('warns when saving locally evicts the oldest browser-saved story past the twelve-story cap', () => {
+    const olderProjects = Array.from({ length: 11 }, (unused, index) => {
+      const storyId = `story-old-${index}`;
+      return {
+        id: storyId,
+        storyId,
+        title: `Old Story ${index}`,
+        synopsis: 'An older saved story.',
+        blueprint: {},
+        summary: createSummary({ storyId, title: `Old Story ${index}` }),
+        state: createState({ storyId }),
+        chapters: [createChapter()],
+        createdAt: new Date(2026, 0, index + 1).toISOString(),
+        updatedAt: new Date(2026, 0, index + 1).toISOString()
+      };
+    });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(olderProjects));
+
+    seedWorkbenchForContinuation({ summary: createSummary({ storyId: 'story-twelfth', title: 'Twelfth Story' }) });
+    component.saveActiveProject();
+    expect(component.savedProjects().length).toBe(12);
+    expect(component.workspaceSaveStatus()).toBe('Saved in this browser.');
+
+    const notificationService = TestBed.inject(NotificationService);
+    seedWorkbenchForContinuation({ summary: createSummary({ storyId: 'story-thirteenth', title: 'Thirteenth Story' }) });
+    component.saveActiveProject();
+
+    expect(component.savedProjects().length).toBe(12);
+    expect(component.savedProjects().some(project => project.id === 'story-old-0')).toBeFalse();
+    expect(component.workspaceSaveStatus()).toContain('"Old Story 0" was removed to stay within the 12-story local limit.');
+
+    const warningNotification = notificationService.notifications()
+      .find(notification => notification.title === 'Local story limit reached');
+    expect(warningNotification).toBeDefined();
+    expect(warningNotification?.message).toContain('Old Story 0');
+    expect(warningNotification?.autoHide).toBeFalse();
+  });
+
   it('keeps connected cloud state when there is no active workbench project to save', () => {
     component.cloudLibrarySyncState.set({
       mode: 'cloud_synced',
@@ -1554,6 +1593,63 @@ describe('App', () => {
     component.syncStoryLabProfileDefaultsWithAuthState(false, null);
 
     expect(storyService.getStoryLabProfile).not.toHaveBeenCalled();
+  });
+
+  // Before this, `storyLabProfileDefaultsFetchedForAccountId` was set once
+  // and never cleared, so signing out and back in as the *same* account
+  // within one session skipped the fetch entirely — any profile changes
+  // made elsewhere between the two sign-ins would never load.
+  it('refetches after a sign-out and sign-in as the same account', () => {
+    storyService.getStoryLabProfile.and.returnValue(of({ success: true, data: createStoryLabProfile() }));
+
+    component.syncStoryLabProfileDefaultsWithAuthState(true, 'user-owner');
+    component.syncStoryLabProfileDefaultsWithAuthState(false, null);
+    component.syncStoryLabProfileDefaultsWithAuthState(true, 'user-owner');
+
+    expect(storyService.getStoryLabProfile).toHaveBeenCalledTimes(2);
+  });
+
+  // A failed background fetch must not throw into Jasmine's unhandled-error
+  // path — `StoryService`'s HTTP methods reject the observable on failure,
+  // so this subscription needs its own `error` callback.
+  it('does not throw when the background profile fetch fails', () => {
+    storyService.getStoryLabProfile.and.returnValue(throwError(() => new Error('network down')));
+
+    expect(() => component.syncStoryLabProfileDefaultsWithAuthState(true, 'user-owner')).not.toThrow();
+  });
+
+  // Before this, any defaults application — whether from a sign-in or a
+  // profile save — would silently overwrite a creature/tone/heat-contract
+  // the reader had already picked in the still-blank blueprint.
+  describe('blueprintTouchedByReader guard', () => {
+    it('blocks sign-in-time defaults once the reader has edited the blueprint', () => {
+      storyService.getStoryLabProfile.and.returnValue(of({ success: true, data: createStoryLabProfile() }));
+      component.updateBlueprint('creature', 'dragon');
+
+      component.syncStoryLabProfileDefaultsWithAuthState(true, 'user-owner');
+
+      expect(component.blueprint().creature).toBe('dragon');
+    });
+
+    it('blocks save-time defaults once the reader has edited the blueprint', () => {
+      storyService.listCloudStoryProjects.and.returnValue(of({
+        success: true,
+        data: { ownerUserId: 'user-test', storageMode: 'non_durable_memory', projects: [], totalProjectCount: 0 }
+      }));
+      component.updateBlueprint('creature', 'dragon');
+
+      component.onStoryLabProfileSaved(createStoryLabProfile());
+
+      expect(component.blueprint().creature).toBe('dragon');
+    });
+
+    it('still applies defaults for an untouched blueprint', () => {
+      storyService.getStoryLabProfile.and.returnValue(of({ success: true, data: createStoryLabProfile() }));
+
+      component.syncStoryLabProfileDefaultsWithAuthState(true, 'user-owner');
+
+      expect(component.blueprint().creature).toBe('witch');
+    });
   });
 
   it('keeps non-durable loaded projects out of cloud-synced state', () => {
@@ -3418,6 +3514,96 @@ describe('App', () => {
 
     expect(component.isExporting()).toBeFalse();
     expect(notificationService.notifications()[0]?.message).toBe('Could not reach the export service.');
+  });
+});
+
+// A third sibling top-level suite (see the comment above `describe('App
+// cloud account sign-in wiring', ...)` for why this isn't nested in the main
+// `describe('App', ...)`): this one provides a directly-controllable fake
+// `AuthService` — real Angular `signal()`s for `sessionEpoch`/`accountId`/
+// `isSignedIn`, set synchronously by the test rather than through a real (or
+// fake-Clerk) sign-in flow — because the case under test is a race that must
+// land a response *between* two exact points in time, which the heavier
+// Clerk-mock harness below has no way to pause for.
+describe('App sign-in-time profile-defaults staleness', () => {
+  let fixture: ComponentFixture<App>;
+  let component: App;
+  let storyService: jasmine.SpyObj<StoryService>;
+  let sessionEpoch: ReturnType<typeof signal<number>>;
+
+  beforeEach(async () => {
+    sessionEpoch = signal(0);
+    const fakeAuthService = {
+      sessionEpoch,
+      accountId: signal<string | null>('user-a'),
+      isSignedIn: signal(true),
+      identityTransitionPending: () => false,
+      initialize: () => Promise.resolve(),
+      signIn: () => Promise.resolve(),
+      signOut: () => Promise.resolve(),
+      isConfigured: () => false,
+      getRequestToken: () => Promise.resolve(null)
+    };
+
+    storyService = jasmine.createSpyObj<StoryService>('StoryService', [
+      'getStoryLabAuthConfig',
+      'listCloudStoryProjects',
+      'getStoryLabProfile'
+    ]);
+    storyService.getStoryLabAuthConfig.and.returnValue(of({ success: true, data: { provider: 'none' } }));
+    storyService.listCloudStoryProjects.and.returnValue(of({
+      success: true,
+      data: { ownerUserId: 'user-a', storageMode: 'non_durable_memory', projects: [], totalProjectCount: 0 }
+    }));
+
+    await TestBed.configureTestingModule({
+      imports: [App, HttpClientTestingModule],
+      providers: [
+        { provide: StoryService, useValue: storyService },
+        { provide: AuthService, useValue: fakeAuthService },
+        { provide: ActivatedRoute, useValue: { queryParamMap: of(convertToParamMap({})) } }
+      ]
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(App);
+    component = fixture.componentInstance;
+  });
+
+  // The regression this guards: a fetch started for one identity that
+  // resolves after the identity has since moved on must not apply its data,
+  // and — since this method runs at most once per account — must retry
+  // rather than leave that account's defaults never applied for the rest of
+  // the session.
+  it('retries the sign-in-time profile fetch under the current identity instead of applying a stale response', () => {
+    const firstResponse = new Subject<ApiResponse<StoryLabUserProfile>>();
+    const secondResponse = new Subject<ApiResponse<StoryLabUserProfile>>();
+    storyService.getStoryLabProfile.and.returnValues(firstResponse.asObservable(), secondResponse.asObservable());
+
+    // Flushes the constructor's own effects' first execution — unlike the
+    // main `describe('App', ...)` suite above, this test asserts on what
+    // that effect actually does (starting the sign-in-time profile fetch),
+    // so the spy's return value has to be in place first.
+    fixture.detectChanges();
+
+    // The constructor's own effect already started the first fetch, for the
+    // account signed in at construction.
+    expect(storyService.getStoryLabProfile).toHaveBeenCalledTimes(1);
+
+    // An ordinary same-account token refresh advances the epoch while that
+    // fetch is still in flight.
+    sessionEpoch.set(1);
+    firstResponse.next({ success: true, data: createStoryLabProfile({ favoriteCreatures: ['dragon'] }) });
+    firstResponse.complete();
+
+    // Stale — discarded rather than applied, and retried immediately rather
+    // than silently giving up on this account for the rest of the session.
+    expect(component.blueprint().creature).not.toBe('dragon');
+    expect(storyService.getStoryLabProfile).toHaveBeenCalledTimes(2);
+
+    secondResponse.next({ success: true, data: createStoryLabProfile({ favoriteCreatures: ['dragon'] }) });
+    secondResponse.complete();
+
+    expect(component.blueprint().creature).toBe('dragon');
   });
 });
 
