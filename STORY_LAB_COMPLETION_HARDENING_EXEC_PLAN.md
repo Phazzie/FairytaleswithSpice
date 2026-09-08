@@ -1,7 +1,7 @@
 # Story Lab Completion Hardening ExecPlan
 
 Created: 2026-06-21 15:04 EDT
-Last updated: 2026-07-16 03:14 EDT
+Last updated: 2026-09-06 01:07 EDT
 
 This ExecPlan is the authoritative plan for finishing the Story Lab recovery after PR #151. It reconciles the merged unpublished-branch recovery slices, the still-open review-comment backlog, Dependabot triage, live auth/database integration, durable-job honesty, and the final completion audit.
 
@@ -33,7 +33,8 @@ The desired end state is:
 - [x] Merge review-thread cleanup PRs #174, #175, #176, #177, #178, and #179.
 - [ ] Triage #152 until every Story Lab recovery review thread is replied to and either resolved or explicitly tracked.
 - [ ] Triage #153 until every legacy review thread is replied to and either resolved, tracked, or closed as obsolete/superseded.
-- [ ] Resolve current Dependabot follow-up by triaging PR #194 with evidence, then closing/recreating or splitting it as needed.
+- [x] PR #194 closed unmerged on 2026-08-28 without this slice's action; superseded by later dependency work.
+- [ ] Resolve the current Dependabot follow-up. As of 2026-09-06, the live queue is PR #322 (lockfile-only advisory remediation, `PR70_RECOVERY_LEDGER.md`) and Dependabot's current grouped PR #327, which repeats #194's original mixed-major-bump problem — neither is merged, closed, or replaced yet. See Slice 4 below.
 - [ ] Complete the auth/database live integration gate.
 - [ ] Complete the durable job correctness gate.
 - [ ] Complete the preflight/tooling drift gate.
@@ -107,7 +108,7 @@ Relevant issues:
 - #153: unresolved legacy PR review threads.
 - #138: quality heuristics refactor.
 - #135: idempotency-key retries in Postgres job creation.
-- #132: historical Dependabot #120/#121 Vercel preview triage; current dependency follow-up is #194.
+- #132: historical Dependabot #120/#121 Vercel preview triage; #194 was the follow-up after that but closed unmerged on 2026-08-28 — current dependency follow-up is #322/#327 (see Progress and Slice 4 above).
 - #131: job store config memoization.
 - #130: recovery preflight network-dependent Node 20 wrappers.
 - #129: stable UI-slice validation hooks.
@@ -202,13 +203,13 @@ Acceptance:
 
 Scope:
 
-- Resolve the current Dependabot queue. As of 2026-07-11, this is PR #194.
-- Treat PR #194 as a split/close-recreate candidate because it mixes a root lockfile update with Angular 22 package/lockfile changes and is failing Recovery CI plus Vercel.
+- Resolve the current Dependabot queue. #194 (the queue as of 2026-07-11) closed unmerged on 2026-08-28; as of 2026-09-06 the live queue is PR #322 (lockfile-only advisory remediation) and Dependabot's replacement grouped PR #327.
+- Treat any grouped Dependabot PR that mixes a root lockfile update with an Angular major-version bump as a split/close-recreate candidate — #194, #318, and #327 have each repeated this same mixed-major-bump pattern.
 - Keep dependency changes separate from auth/database and durable-job work.
 
 Sub-checklist:
 
-- [ ] Inspect dependency deltas in #194.
+- [ ] Inspect dependency deltas in the current queue (#322, #327).
 - [ ] Run `npm install` only where lockfile refresh is needed.
 - [ ] Run focused root and Angular validations.
 - [ ] Confirm Vercel preview behavior or document blocker.
@@ -224,7 +225,7 @@ scripts/recovery/check-vercel-function-count.sh
 
 Acceptance:
 
-- PR #194 is merged, closed, or replaced by narrower PRs with evidence.
+- The current Dependabot queue is merged, closed, or replaced by narrower PRs with evidence.
 - Dependabot tracking is updated with the chosen disposition.
 
 ### Slice 5: Auth And Database Live Integration
