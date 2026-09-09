@@ -115,7 +115,7 @@ Relevant issues:
 - #128: recovery docs guidance drift/tool fallback notes.
 - #127: concurrent index migration strategy before live durable tables.
 - #126: engine exceptions during route-backed jobs.
-- #125: transaction-capable Postgres job mutations.
+- #125: transaction-capable Postgres job mutations — closed by PR #357, which rewrote `createJob()`/`updateJob()` in `postgresStoryLabJobStore.ts` to write their job-row mutation and event-append as one atomic CTE statement each.
 
 ## Plan of Work
 
@@ -275,12 +275,12 @@ Acceptance:
 
 Scope:
 
-- Complete #125, #126, #131, and #135 before claiming durable jobs.
+- Complete #126, #131, and #135 before claiming durable jobs (#125 closed by PR #357).
 - Keep active UI labels honest until process-loss proof exists.
 
 Sub-checklist:
 
-- [ ] Add transaction-capable Postgres job mutations where multi-row or state-transition safety requires it.
+- [x] Add transaction-capable Postgres job mutations where multi-row or state-transition safety requires it. (PR #357: `createJob()`/`updateJob()` each write their job-row mutation and event-append as one atomic CTE statement, closing #125. This is scoped to the two writes those methods already made — it is not the broader outbox/idempotency/dispatcher work Slice 6's other items and `STORY_LAB_LIVING_BOOK_AND_DURABLE_JOBS_EXEC_PLAN.md` Phase B still scope.)
 - [ ] Add idempotency-key retry behavior for job creation.
 - [ ] Memoize job-store config only when it cannot freeze stale env/test state.
 - [ ] Handle engine exceptions during route-backed jobs with durable failure records.
