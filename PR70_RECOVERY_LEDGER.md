@@ -18,6 +18,7 @@ Status values:
 
 | PR | Planned action | Actual status | Notes |
 |---:|---|---|---|
+| #341 | needs a human decision | In review | External-fork PR accepting a Clerk session as a fallback credential when `API_KEYS` is configured; cleanly mergeable, but CI has never run (blocked on maintainer approval for a first-time fork contributor) and Sourcery flagged the authorization-policy change as needing a human reviewer. Status comment posted 2026-09-09; see "Stale-PR triage cycle" below. |
 | #322 | rebase-and-merge (maintainer call) | In review | 35-advisory lockfile-only remediation; #318 (the Dependabot PR it unblocks) closed unmerged, replacement #327 repeats the same major-bump-bundling mistake. Status comment posted 2026-09-06; see "Stale-PR triage cycle" below. |
 | #316 | needs a human decision | In review | Bearer-token redaction rewrite; clean/green but its own description names two open decisions for the repo owner. Status comment posted 2026-09-06; see "Stale-PR triage cycle" below. |
 | #198 | close-as-superseded (maintainer call) | In review | Superseded by `STORY_LAB_LIVING_BOOK_AND_DURABLE_JOBS_EXEC_PLAN.md`, which already directs this PR be closed; branch is stale against current `main` with two ordinary merge conflicts (`AGENTS.md`, `PR70_RECOVERY_CHANGELOG.md`), not unrelated history. Three comments posted 2026-09-06 (original status comment, a disposition-source correction, and a git-ancestry retraction); see "Stale-PR triage cycle" below. |
