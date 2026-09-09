@@ -438,6 +438,11 @@ function buildMockContinuationResult(title: string, content: string, rawContent:
   });
 
   await withEnvAsync({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined }, async () => {
+    // A time-budget shortfall mid-batch is the expected path under real load
+    // (`StoryService.generateChaptersForStory` stops early and reports the
+    // rest via `partialFailures` rather than throwing), not a total failure —
+    // so the chapter that *did* generate, and was already billed, must reach
+    // the reader rather than being discarded along with the request.
     const response = await generateStoryLabGenesis(blueprint, {
       serviceFactory: () => ({
         generateStory: async () => ({
@@ -460,8 +465,46 @@ function buildMockContinuationResult(title: string, content: string, rawContent:
       })
     });
 
-    assert(!response.success, 'partial provider success should not look like a complete Story Lab batch');
-    assert(response.error.code === 'PARTIAL_GENERATION_FAILED', 'partial failure should use a specific error code');
+    assert(response.success, 'a partial batch should still hand back the chapters that generated');
+    if (response.success) {
+      assert(response.data.batch.chapters.length === 1, 'the one generated chapter should reach the Story Lab payload');
+      assert(
+        response.data.batch.partialFailures?.length === 1
+        && response.data.batch.partialFailures[0].chapterNumber === 2,
+        'the skipped chapter should be reported on the batch rather than silently dropped'
+      );
+      assert(response.data.state !== undefined, 'a partial batch should still run continuity extraction and produce state');
+      assert(response.data.persistence !== undefined, 'a partial batch should still be persisted rather than discarded');
+    }
+  });
+
+  await withEnvAsync({ XAI_API_KEY: 'test-key', STORY_LAB_FORCE_MOCK: undefined }, async () => {
+    // The one shortfall that is still a hard failure: nothing generated at
+    // all, so there is nothing for the reader to keep.
+    const response = await generateStoryLabGenesis(blueprint, {
+      serviceFactory: () => ({
+        generateStory: async () => ({
+          success: true,
+          data: { ...classicStory, chapters: [] },
+          metadata: {
+            requestId: 'req-zero',
+            processingTime: 1000,
+            chaptersRequested: 2,
+            chaptersGenerated: 0,
+            partialFailures: [{
+              chapterNumber: 1,
+              message: 'Provider rejected every chapter in this batch.'
+            }]
+          }
+        }),
+        continueChapter: async () => {
+          throw new Error('continueChapter should not be called by genesis test');
+        }
+      })
+    });
+
+    assert(!response.success, 'a batch that generated nothing should still fail closed');
+    assert(response.error.code === 'PARTIAL_GENERATION_FAILED', 'zero-chapter failure should use the same error code as before');
   });
 
   await withEnvAsync({ XAI_API_KEY: undefined, STORY_LAB_FORCE_MOCK: undefined, NODE_ENV: 'production', VERCEL_ENV: undefined }, async () => {

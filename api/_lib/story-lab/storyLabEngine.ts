@@ -287,17 +287,15 @@ export async function generateStoryLabGenesis(
     return storyLabErrorResponse(result.error, 'GENERATION_FAILED');
   }
 
-  const partialError = getPartialGenerationError(
-    input.chapterBatchSize,
-    result.metadata?.chaptersGenerated ?? result.data.chapters?.length ?? 1,
-    result.metadata?.partialFailures ?? result.data.failedChapters
-  );
-  if (partialError) {
-    return partialError;
+  const generatedChapterCount = result.metadata?.chaptersGenerated ?? result.data.chapters?.length ?? 1;
+  const partialFailures = result.metadata?.partialFailures ?? result.data.failedChapters;
+  const zeroChapterError = getZeroChapterGenerationError(input.chapterBatchSize, generatedChapterCount, partialFailures);
+  if (zeroChapterError) {
+    return zeroChapterError;
   }
 
   const payload = await enrichContinuity(
-    buildStoryLabPayloadFromGeneratedStory(input, result.data, result.metadata),
+    buildStoryLabPayloadFromGeneratedStory(input, result.data, result.metadata, partialFailures),
     input,
     !options.serviceFactory,
     requestStartedAtMs,
@@ -429,17 +427,15 @@ export async function continueStoryLab(
     return storyLabErrorResponse(result.error, 'CONTINUATION_FAILED');
   }
 
-  const partialError = getPartialGenerationError(
-    input.chapterBatchSize,
-    result.metadata?.chaptersGenerated ?? result.data.chapters?.length ?? 1,
-    result.metadata?.partialFailures ?? result.data.failedChapters
-  );
-  if (partialError) {
-    return partialError;
+  const generatedChapterCount = result.metadata?.chaptersGenerated ?? result.data.chapters?.length ?? 1;
+  const partialFailures = result.metadata?.partialFailures ?? result.data.failedChapters;
+  const zeroChapterError = getZeroChapterGenerationError(input.chapterBatchSize, generatedChapterCount, partialFailures);
+  if (zeroChapterError) {
+    return zeroChapterError;
   }
 
   const payload = await enrichContinuity(
-    buildStoryLabPayloadFromContinuation(input, result.data, storyState, existingSummary, previousChapters, result.metadata),
+    buildStoryLabPayloadFromContinuation(input, result.data, storyState, existingSummary, previousChapters, result.metadata, partialFailures),
     undefined,
     !options.serviceFactory,
     requestStartedAtMs,
@@ -494,7 +490,8 @@ function findUnnumberedChapterIndex(chapters: readonly GeneratedChapter[]): numb
 export function buildStoryLabPayloadFromGeneratedStory(
   input: LabGenerationSeam['input'],
   story: ClassicStoryOutput,
-  metadata?: ApiResponseMetadata
+  metadata?: ApiResponseMetadata,
+  partialFailures?: ChapterFailure[]
 ): StoryIterationPayload {
   const now = new Date().toISOString();
   const chapters = toStoryLabChapters(story.storyId, story.chapters, story.content, story.rawContent, input.chapterBatchSize);
@@ -515,7 +512,8 @@ export function buildStoryLabPayloadFromGeneratedStory(
     batch: {
       chapters,
       totalWordCount: chapters.reduce((sum, chapter) => sum + chapter.wordCount, 0),
-      suggestedNextPrompts: buildSuggestedPrompts(input, story.nextChapterHint)
+      suggestedNextPrompts: buildSuggestedPrompts(input, story.nextChapterHint),
+      partialFailures: partialFailures?.length ? partialFailures : undefined
     },
     state,
     stateDelta: buildStateDelta(story.storyId, null, state, chapters),
@@ -529,7 +527,8 @@ function buildStoryLabPayloadFromContinuation(
   previousState: StoryStateSnapshot,
   existingSummary: StorySummary | undefined,
   previousChapters: GeneratedChapter[],
-  metadata?: ApiResponseMetadata
+  metadata?: ApiResponseMetadata,
+  partialFailures?: ChapterFailure[]
 ): StoryIterationPayload & { appendedChapterNumbers: number[] } {
   const now = new Date().toISOString();
   const chapters = toStoryLabChapters(
@@ -559,7 +558,8 @@ function buildStoryLabPayloadFromContinuation(
     batch: {
       chapters,
       totalWordCount: chapters.reduce((sum, chapter) => sum + chapter.wordCount, 0),
-      suggestedNextPrompts: buildContinuationPrompts(input, continuation.nextChapterHint)
+      suggestedNextPrompts: buildContinuationPrompts(input, continuation.nextChapterHint),
+      partialFailures: partialFailures?.length ? partialFailures : undefined
     },
     state,
     stateDelta: buildStateDelta(input.storyId, previousState, state, chapters),
@@ -683,13 +683,31 @@ async function enrichContinuity<T extends StoryIterationPayload>(
   };
 }
 
-function getPartialGenerationError(
+/**
+ * Only a caller who received nothing at all has nothing to work with.
+ *
+ * This used to hard-fail on *any* shortfall — one chapter short of the batch,
+ * or even zero failures with a `generatedChapterCount` that merely undershot
+ * `requestedChapterCount` — which discarded every chapter `StoryService` had
+ * already generated (and billed) whenever the serverless time budget ran out
+ * mid-batch, the *expected* path under real load, not an edge case. The
+ * caller already has `chapters.length === 0` as its own hard-failure gate
+ * (`storyService.ts`'s `generateChaptersForStory`/`continueChapter`, which
+ * return `success: false` before this function is ever reached), so by the
+ * time a real result reaches here `generatedChapterCount` is never actually
+ * zero — this is defense against a `serviceFactory` override (tests use one)
+ * that skips that gate, not a path real traffic takes.
+ *
+ * A genuine shortfall above zero is not an error any more: the caller keeps
+ * what generated, and `partialFailures` travels with it on `batch` instead of
+ * replacing the whole response.
+ */
+function getZeroChapterGenerationError(
   requestedChapterCount: number,
   generatedChapterCount: number,
   partialFailures: ChapterFailure[] | undefined
 ): StoryLabErrorResponse | null {
-  const failures = partialFailures ?? [];
-  if (generatedChapterCount >= requestedChapterCount && failures.length === 0) {
+  if (generatedChapterCount > 0) {
     return null;
   }
 
@@ -701,7 +719,7 @@ function getPartialGenerationError(
       details: {
         chaptersRequested: requestedChapterCount,
         chaptersGenerated: generatedChapterCount,
-        partialFailures: failures
+        partialFailures: partialFailures ?? []
       }
     }
   };

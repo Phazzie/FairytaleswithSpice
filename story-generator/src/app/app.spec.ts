@@ -1801,6 +1801,46 @@ describe('App', () => {
     expect(component.workspaceSaveStatus()).toBe('Saved in this browser.');
   });
 
+  it('marks a batch partial instead of completed when the batch stopped short of the full chapter count', () => {
+    const payload: StoryIterationPayload = {
+      summary: createSummary(),
+      batch: {
+        chapters: [createChapter()],
+        totalWordCount: 900,
+        suggestedNextPrompts: [],
+        partialFailures: [{ chapterNumber: 2, message: 'Provider timed out before chapter 2.' }]
+      },
+      state: createState(),
+      telemetry: {
+        engine: 'gpt',
+        totalLatencyMs: 1800,
+        averageChapterLatencyMs: 1800,
+        tokensConsumed: 900,
+        retryCount: 0
+      }
+    };
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createGenesisJobResponse(payload)
+    }));
+    const notificationService = TestBed.inject(NotificationService);
+    configureValidBlueprint('A vampire princess bound by forbidden vows.');
+
+    component.startGenesis();
+
+    // The chapter that did generate reaches the workbench — a partial batch
+    // is not treated as a failure, since nothing was lost.
+    expect(component.workbench().chapterHistory.length).toBe(1);
+    expect(component.activeBatchQueue().at(-1)?.status).toBe('partial');
+    expect(component.activeBatchQueue().at(-1)?.errorMessage).toContain('chapter 2');
+    expect(component.statusMessage()).toContain('did not generate');
+
+    const partialNotification = notificationService.notifications()[0];
+    expect(partialNotification?.type).toBe('warning');
+    expect(partialNotification?.title).toContain('(partial)');
+    expect(partialNotification?.message).toContain('chapter 2');
+  });
+
   // The continuation twin of this has been asserted since the guard was written
   // — "keeps existing chapters when a completed continuation job has a malformed
   // story payload" below. Genesis only asked whether `job.result` was present at
@@ -2039,6 +2079,7 @@ describe('App', () => {
 
   it('formats unknown batch statuses defensively', () => {
     expect(component.formatBatchStatus('in_progress')).toBe('In Progress');
+    expect(component.formatBatchStatus('partial')).toBe('Partial');
     expect(component.formatBatchStatus('paused' as any)).toBe('paused');
     expect(component.formatBatchStatus(undefined)).toBe('Unknown');
   });
@@ -2075,6 +2116,40 @@ describe('App', () => {
 
     expect(component.activeBatchQueue().length).toBe(0);
     expect(renderedBatchQueueText()).toBeNull();
+  });
+
+  it('treats a partial batch as finished, clearable the same as a completed or failed one', () => {
+    const payload: StoryIterationPayload = {
+      summary: createSummary(),
+      batch: {
+        chapters: [createChapter()],
+        totalWordCount: 900,
+        suggestedNextPrompts: [],
+        partialFailures: [{ chapterNumber: 2, message: 'Provider timed out before chapter 2.' }]
+      },
+      state: createState(),
+      telemetry: {
+        engine: 'gpt',
+        totalLatencyMs: 1200,
+        averageChapterLatencyMs: 1200,
+        tokensConsumed: 900,
+        retryCount: 0
+      }
+    };
+    storyService.createStoryLabJob.and.returnValue(of({
+      success: true,
+      data: createGenesisJobResponse(payload)
+    }));
+    configureValidBlueprint('A siren archivist bargains with a moonlit duke.');
+
+    component.startGenesis();
+
+    expect(component.hasFinishedBatchQueueItems()).toBeTrue();
+    const clearButton = renderedBatchQueuePanel()?.querySelector('[data-testid="clear-finished-batches"]') as HTMLButtonElement | null;
+    clearButton?.click();
+    fixture.detectChanges();
+
+    expect(component.activeBatchQueue().length).toBe(0);
   });
 
   it('hides the Director Room before a chapter exists', () => {

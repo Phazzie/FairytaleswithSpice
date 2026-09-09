@@ -21,6 +21,7 @@ import { STORY_LAB_THEME_SEEDS } from '../../../shared/storyLabThemeSeeds';
 import { stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
 import { isVocabularyMember } from '../../../shared/storyStateVocabulary';
 import { buildStoryHtmlDocument } from './story-html-exporter';
+import { describeBatchCompletionNotice, describePartialBatchFailures } from './batch-progress';
 import { BlueprintValidationField, FormValidationService } from './form-validation.service';
 import { AcceptedMemoryCardEditDraft, MemoryCardDraftItem, MemoryCardService } from './memory-card.service';
 import {
@@ -237,6 +238,7 @@ const BATCH_STATUS_LABELS: Record<BatchProgressState['status'], string> = {
   queued: 'Queued',
   in_progress: 'In Progress',
   completed: 'Completed',
+  partial: 'Partial',
   failed: 'Failed'
 };
 
@@ -950,7 +952,7 @@ export class App implements OnDestroy {
   readonly activeBatchSize = computed<ChapterBatchSize>(() => this.blueprint().chapterBatchSize);
   readonly activeBatchQueue = computed<BatchProgressState[]>(() => this.workbench().batchQueue ?? []);
   readonly hasFinishedBatchQueueItems = computed(() =>
-    this.activeBatchQueue().some(item => item.status === 'completed' || item.status === 'failed')
+    this.activeBatchQueue().some(item => item.status === 'completed' || item.status === 'partial' || item.status === 'failed')
   );
   readonly suggestedNextPrompts = computed(() => this.workbench().lastSuggestedPrompts ?? []);
   readonly continuityExtraction = computed(() => this.workbench().lastContinuityExtraction ?? null);
@@ -2197,14 +2199,15 @@ export class App implements OnDestroy {
     const previousStoryId = this.workbench().story?.storyId;
     const isNewStory = previousStoryId !== payload.summary.storyId;
     const existingQueue = this.activeBatchQueue();
+    const partialFailures = payload.batch.partialFailures;
     const batchQueue = batchId
       ? existingQueue.map(item => item.id === batchId
           ? {
               ...item,
-              status: 'completed' as const,
+              status: partialFailures?.length ? 'partial' as const : 'completed' as const,
               chaptersGenerated: payload.batch.chapters.length,
               completedAt: new Date().toISOString(),
-              errorMessage: undefined
+              errorMessage: partialFailures?.length ? describePartialBatchFailures(partialFailures) : undefined
             }
           : item)
       : existingQueue;
@@ -2274,11 +2277,9 @@ export class App implements OnDestroy {
       }
 
       this.applyIteration(job.result, batchSize, batchId);
-      this.statusMessage.set(copy.completedStatusMessage);
-      this.notificationService.success(
-        copy.completedNotificationTitle,
-        copy.completedNotificationMessage(job.result.batch.chapters.length)
-      );
+      const notice = describeBatchCompletionNotice(copy, job.result.batch.chapters.length, job.result.batch.partialFailures);
+      this.statusMessage.set(notice.statusMessage);
+      this.notificationService[notice.level](notice.notificationTitle, notice.notificationMessage);
       this.isGenerating.set(false);
       this.clearJobStatusPanel();
       this.closeJobEventSubscription();
@@ -2870,7 +2871,7 @@ export class App implements OnDestroy {
   }
 
   clearFinishedBatchQueue() {
-    this.setBatchQueue(this.activeBatchQueue().filter(item => item.status !== 'completed' && item.status !== 'failed'));
+    this.setBatchQueue(this.activeBatchQueue().filter(item => item.status !== 'completed' && item.status !== 'partial' && item.status !== 'failed'));
   }
 
   trackBatch(_index: number, batch: BatchProgressState): string {

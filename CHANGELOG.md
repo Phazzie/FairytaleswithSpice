@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ***WORST TO BEST*** Story Lab batch generation — a mid-batch shortfall discarded every already-generated, already-billed chapter (September 9, 2026)
+
+- `StoryService` already models a partial batch correctly: it generates chapter-by-chapter,
+  deliberately stops early via `hasBudgetForAnotherChapter()` when the serverless time budget runs
+  low (the expected path under real load, not an edge case), records the rest as `failedChapters`,
+  and only hard-fails when zero chapters came back. It returns `success: true` with
+  `metadata.partialFailures` populated otherwise. `storyLabEngine.getPartialGenerationError()` threw
+  all of that away: *any* shortfall — one chapter short of the requested count, even with zero actual
+  failures reported — became a hard `success: false PARTIAL_GENERATION_FAILED`, before continuity
+  extraction or persistence ever ran. A 5-chapter batch that generated 4 real chapters (real, billed
+  xAI calls) and timed out on #5 returned nothing at all — no story, no chapters, no continuity state
+  saved, and the reader had no way to know 4/5 had actually finished. `ChapterBatchEnvelope` had no
+  `partialFailures` field, so even a route that *did* return a successful-with-warnings batch had
+  nowhere to show it.
+- Renamed and narrowed the guard to `getZeroChapterGenerationError()`: it now only hard-fails when
+  nothing generated at all. Any shortfall above zero keeps the chapters that did generate, runs
+  continuity extraction and persistence as normal, and threads `partialFailures` onto
+  `StoryIterationPayload.batch` from both the genesis and continuation builders.
+- `ChapterBatchEnvelope` gained `partialFailures?: { chapterNumber, message }[]`, and
+  `BatchProgressStatus` gained a `'partial'` state alongside `completed`/`failed`. `App.applyIteration`
+  marks a batch `'partial'` (not `'completed'`) when it carries `partialFailures`, with an
+  `errorMessage` naming what was skipped; `handleJobSnapshot` shows a warning notification instead of
+  an unqualified success one. Extracted this presentation logic into a new `batch-progress.ts` (pure
+  functions, no DI) rather than growing `app.ts` past its own 3,100-line regrowth-guard test.
+  `hasFinishedBatchQueueItems()`/`clearFinishedBatchQueue()` updated so a partial batch counts as
+  finished and is clearable the same as a completed or failed one.
+- Tests: flipped `story-lab-real-engine.test.ts`'s "discard on shortfall" case to assert the generated
+  chapter is kept, `batch.partialFailures` is populated, and continuity extraction/persistence still
+  run; added a case confirming a genuine zero-chapter result still hard-fails with the same error
+  code as before. Added `app.spec.ts` coverage for the `'partial'` status label, its warning
+  notification, and the finished-queue clearing behavior.
+- Picked up an orphaned finding: this exact candidate was posted to `#claude-routines` twice on
+  September 8 with no critique and no PR ever opened for it. Re-verified every claim against current
+  `HEAD` before resuming it.
+
 ### ***WORST TO BEST*** Local Story Workspace — saving past the browser's twelve-story cap silently deleted the oldest story with no warning (September 8, 2026)
 
 - `StoryWorkspaceStorageService.saveProject()` caps browser-local saves at 12 and trims whichever

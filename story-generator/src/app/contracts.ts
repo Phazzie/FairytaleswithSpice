@@ -293,6 +293,14 @@ export interface ChapterBatchEnvelope {
   chapters: GeneratedChapter[];
   totalWordCount: number;
   suggestedNextPrompts: string[];
+  /**
+   * Chapters the provider skipped or failed on within this batch, present
+   * alongside `chapters` rather than instead of them — the batch that reached
+   * the client already generated (and billed) everything in `chapters`, and
+   * this names what did not make it in. Absent when the batch generated every
+   * requested chapter.
+   */
+  partialFailures?: { chapterNumber: number; message: string }[];
 }
 
 export interface StoryStateDelta {
@@ -493,7 +501,7 @@ export interface CloudStoryProjectDeleteReceipt {
   deleted: boolean;
 }
 
-export type BatchProgressStatus = 'queued' | 'in_progress' | 'completed' | 'failed';
+export type BatchProgressStatus = 'queued' | 'in_progress' | 'completed' | 'partial' | 'failed';
 
 export interface BatchProgressState {
   id: string;
