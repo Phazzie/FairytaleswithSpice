@@ -321,6 +321,75 @@ async function testDocxIsARealZipContainerWithItsDocument(): Promise<void> {
   assert(documentXml.includes('Élodie smiled'), 'the document body should include the real story content');
 }
 
+// `storyService.ts`'s prompt asks the model for `<em>` (and `ALLOWED_STORY_TAGS`
+// treats `<strong>` as equally legitimate story content), but only the `.html`
+// export ever kept either: `.txt`, `.pdf`, `.epub`, and `.docx` were all built
+// from `stripStoryHtmlForExport`'s fully flattened plain text, so every
+// italicized aside and emphasized word the AI wrote silently vanished from
+// every format a reader might actually pick to keep the story in.
+const emphasizedStoryHtml =
+  '<p>She said the word <em>please</em> and <strong>everything</strong> changed.</p>';
+
+async function testTextExportRendersEmphasisAsMarkdown(): Promise<void> {
+  const text = (
+    await new ExportService().generateExportContent(createInput({ format: 'txt', content: emphasizedStoryHtml }))
+  ).toString('utf8');
+
+  assert(text.includes('_please_'), `.txt should render <em> as markdown italics (got ${JSON.stringify(text)})`);
+  assert(text.includes('**everything**'), `.txt should render <strong> as markdown bold (got ${JSON.stringify(text)})`);
+}
+
+async function testEpubExportKeepsRealInlineEmphasisTags(): Promise<void> {
+  const document = await new ExportService().generateExportContent(
+    createInput({ format: 'epub', content: emphasizedStoryHtml })
+  );
+  const chapter = readAsRealZipContainer(document, 'epub').get('OEBPS/chapter1.xhtml')!.data.toString('utf8');
+
+  assert(chapter.includes('<em>please</em>'), `.epub should keep <em> as a real inline tag (got ${chapter})`);
+  assert(chapter.includes('<strong>everything</strong>'), `.epub should keep <strong> as a real inline tag (got ${chapter})`);
+}
+
+async function testDocxExportMarksRunsBoldAndItalic(): Promise<void> {
+  const document = await new ExportService().generateExportContent(
+    createInput({ format: 'docx', content: emphasizedStoryHtml })
+  );
+  const documentXml = readAsRealZipContainer(document, 'docx').get('word/document.xml')!.data.toString('utf8');
+
+  assert(
+    /<w:rPr><w:i\/><\/w:rPr><w:t[^>]*>please<\/w:t>/.test(documentXml),
+    `.docx should mark the emphasized word's run italic (got ${documentXml})`
+  );
+  assert(
+    /<w:rPr><w:b\/><\/w:rPr><w:t[^>]*>everything<\/w:t>/.test(documentXml),
+    `.docx should mark the bolded word's run bold (got ${documentXml})`
+  );
+}
+
+// PDF has no font declared but plain Helvetica until this fix, so `<em>` and
+// `<strong>` had nothing to switch to and were shown as ordinary text — this
+// confirms the three added standard-14 variants are declared and actually
+// selected around the words that need them.
+async function testPdfExportSwitchesFontsForEmphasis(): Promise<void> {
+  const document = await pdfTextOf(createInput({ format: 'pdf', content: emphasizedStoryHtml }));
+
+  for (const baseFont of ['Helvetica-Bold', 'Helvetica-Oblique', 'Helvetica-BoldOblique']) {
+    assert(document.includes(`/BaseFont /${baseFont}`), `the PDF should declare a ${baseFont} font resource`);
+  }
+
+  assert(
+    /\/F3 \d+ Tf\s*\n\(please\) Tj/.test(document),
+    `the PDF should switch to the italic font resource around "please" (got ${JSON.stringify(extractPdfStreamBody(document))})`
+  );
+  assert(
+    /\/F2 \d+ Tf\s*\n\(everything\) Tj/.test(document),
+    `the PDF should switch to the bold font resource around "everything" (got ${JSON.stringify(extractPdfStreamBody(document))})`
+  );
+  assert(
+    pdfShownText(document).includes('please') && pdfShownText(document).includes('everything'),
+    'the emphasized words should still be shown on the page, not merely formatted'
+  );
+}
+
 // A PDF string is bytes, and the font decides which glyph each byte names.
 // The document is written out as UTF-8 and declared Helvetica with no
 // `/Encoding`, so every character above ASCII went in as two or three UTF-8
@@ -999,6 +1068,10 @@ async function main(): Promise<void> {
   await testXmlExportsCarryNoCharacterXmlForbids();
   await testEpubIsARealZipContainerWithItsChapter();
   await testDocxIsARealZipContainerWithItsDocument();
+  await testTextExportRendersEmphasisAsMarkdown();
+  await testEpubExportKeepsRealInlineEmphasisTags();
+  await testDocxExportMarksRunsBoldAndItalic();
+  await testPdfExportSwitchesFontsForEmphasis();
   await testArchiveEntriesCarryADateThatExists();
   await testArchivesAreAFunctionOfTheirInput();
   await testMetadataReflectsTheActualStory();

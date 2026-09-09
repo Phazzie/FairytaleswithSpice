@@ -1,11 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { SaveExportSeam, ApiResponse, EXPORT_FORMATS, ExportFormat } from '../types/contracts';
 import {
+  AnnotatedChar,
   escapeHtml,
   escapePdfText,
   escapeXmlText,
+  extractStoryRichLines,
+  mergeAnnotatedIntoRuns,
   sanitizeStoryHtmlForExport,
-  stripStoryHtmlForExport
+  stripStoryHtmlForExport,
+  StoryTextRun
 } from './exportSanitizer';
 import { buildZipArchive, ZipEntry } from './zipArchive';
 import { estimateReadTimeMinutes } from '../utils/readTime';
@@ -34,6 +38,25 @@ const PDF_MAX_LINE_CHARACTERS = Math.floor(
   (PDF_PAGE_WIDTH - PDF_MARGIN * 2) / (PDF_FONT_SIZE * PDF_GLYPH_WIDTH_EM)
 );
 const PDF_LINES_PER_PAGE = Math.floor((PDF_PAGE_HEIGHT - PDF_MARGIN * 2) / PDF_LINE_HEIGHT);
+/**
+ * The standard-14 Helvetica variants a PDF reader can show without any font
+ * being embedded, keyed by the `/Fn` resource name each page declares them
+ * under. Regular was the only one ever declared, so `<em>` and `<strong>` had
+ * no font to switch to and were shown as ordinary text (see `escapePdfText`'s
+ * caller in `buildPdfPageContentStream`).
+ *
+ * All four share `/WinAnsiEncoding` with the regular font (see `escapePdfText`
+ * for why that encoding matters), so switching between them mid-line changes
+ * only the glyphs' weight and slant, never which byte means which character.
+ */
+const PDF_FONTS: Record<string, string> = {
+  F1: 'Helvetica',
+  F2: 'Helvetica-Bold',
+  F3: 'Helvetica-Oblique',
+  F4: 'Helvetica-BoldOblique'
+};
+/** Object 1 is the catalog, object 2 the page tree, then one object per `PDF_FONTS` entry. */
+const FIRST_PAGE_OBJECT_NUMBER = 2 + Object.keys(PDF_FONTS).length + 1;
 // Leaves room for the `_<timestamp>_<token>.<format>` suffix inside the
 // 255-byte filename limit that ext4 and APFS enforce.
 const EXPORT_FILENAME_STEM_MAX_LENGTH = 80;
@@ -48,73 +71,95 @@ const EXPORT_MIME_TYPES: Record<ExportFormat, string> = {
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 };
 
-/**
- * Cut `value` into runs of at most `limit` code points. Iterating a string
- * yields whole code points rather than UTF-16 code units, so an astral-plane
- * character always stays whole — a cut between the halves of a surrogate pair
- * would encode as U+FFFD on both sides of it.
- */
-function chunkByCodePoint(value: string, limit: number): string[] {
-  const chunks: string[] = [];
-  let chunk = '';
-  let taken = 0;
+const PDF_UNFORMATTED_CHAR = { bold: false, italic: false, underline: false };
 
-  for (const character of value) {
-    if (taken >= limit) {
-      chunks.push(chunk);
-      chunk = '';
-      taken = 0;
+/**
+ * Spell a paragraph's runs out one code point per array entry, in the same
+ * `AnnotatedChar` shape `extractStoryRichLines` builds its own characters in
+ * — reused rather than respelled here so this module and `exportSanitizer.ts`
+ * merge annotated characters back into runs (`mergeAnnotatedIntoRuns`) exactly
+ * one way between them, not two.
+ *
+ * Iterating a string with `for...of` yields whole code points rather than
+ * UTF-16 code units, so an astral-plane character always stays whole here —
+ * the same concern `capUtf8Bytes` (`shared/storyDownloadFilename.ts`) and the
+ * excerpt cuts in `textExcerpt.ts`/`imageService.ts` each read code point by
+ * code point for. Because each array entry already *is* one code point,
+ * chunking a word that runs longer than a whole line is a plain `.slice()`
+ * below — `wrapFormattedParagraph` needs no separate code-point-aware cutting
+ * function the way the plain-string version of this wrap it replaced did.
+ */
+function flattenRunsToChars(runs: StoryTextRun[]): AnnotatedChar[] {
+  const chars: AnnotatedChar[] = [];
+
+  for (const run of runs) {
+    for (const char of run.text) {
+      chars.push({ char, bold: run.bold, italic: run.italic, underline: run.underline });
+    }
+  }
+
+  return chars;
+}
+
+/**
+ * Break one paragraph of the story into the formatted lines a PDF page shows
+ * it as, preserving which stretches of each line are bold/italic/underlined.
+ *
+ * The word-wrapping itself is unchanged from the plain-string version this
+ * replaces: words are kept whole where they fit, a word longer than a whole
+ * line — a URL, a run of unbroken text — is cut at a code-point boundary
+ * rather than allowed to run off the page, and a paragraph with no words still
+ * yields one (empty) line so the blank line between two paragraphs survives
+ * into the document. What changes is that every character carries its own
+ * emphasis through the wrap, so a `<em>` spanning a line break, or ending
+ * mid-word, keeps exactly the characters it started with formatted — only a
+ * single word cut mid-emphasis (line 116's own edge case, now on formatting
+ * rather than on the character itself) resolves to the fragment's own,
+ * already-correct annotation rather than needing to be re-derived.
+ */
+function wrapFormattedParagraph(runs: StoryTextRun[], maxCharacters: number): StoryTextRun[][] {
+  const chars = flattenRunsToChars(runs);
+  const words: AnnotatedChar[][] = [];
+  let currentWord: AnnotatedChar[] = [];
+
+  for (const character of chars) {
+    if (character.char === ' ') {
+      if (currentWord.length > 0) {
+        words.push(currentWord);
+        currentWord = [];
+      }
+      continue;
     }
 
-    chunk += character;
-    taken += 1;
+    currentWord.push(character);
+  }
+  if (currentWord.length > 0) {
+    words.push(currentWord);
   }
 
-  if (chunk) {
-    chunks.push(chunk);
-  }
-
-  return chunks;
-}
-
-/** The code points in `value`, which is what the line width is measured in. */
-function countCodePoints(value: string): number {
-  let count = 0;
-
-  for (const _character of value) {
-    count += 1;
-  }
-
-  return count;
-}
-
-/**
- * Break one paragraph of the story into the lines a PDF page shows it as.
- *
- * Words are kept whole where they fit; a word longer than a whole line — a URL,
- * a run of unbroken text — is cut at code-point boundaries rather than being
- * allowed to run off the page. A paragraph with no words still yields one
- * (empty) line, so the blank line between two paragraphs survives into the
- * document.
- */
-function wrapPdfParagraph(paragraph: string, maxCharacters: number): string[] {
-  const words = paragraph.split(/\s+/).filter(Boolean);
   if (words.length === 0) {
-    return [''];
+    return [[]];
   }
 
-  const lines: string[] = [];
-  let current = '';
+  const lines: AnnotatedChar[][] = [];
+  let current: AnnotatedChar[] = [];
 
   for (const word of words) {
-    for (const piece of chunkByCodePoint(word, maxCharacters)) {
+    const pieces =
+      word.length <= maxCharacters
+        ? [word]
+        : Array.from({ length: Math.ceil(word.length / maxCharacters) }, (_unused, index) =>
+            word.slice(index * maxCharacters, (index + 1) * maxCharacters)
+          );
+
+    for (const piece of pieces) {
       if (current.length === 0) {
         current = piece;
         continue;
       }
 
-      if (countCodePoints(current) + 1 + countCodePoints(piece) <= maxCharacters) {
-        current += ` ${piece}`;
+      if (current.length + 1 + piece.length <= maxCharacters) {
+        current = [...current, { char: ' ', ...PDF_UNFORMATTED_CHAR }, ...piece];
         continue;
       }
 
@@ -127,7 +172,7 @@ function wrapPdfParagraph(paragraph: string, maxCharacters: number): string[] {
     lines.push(current);
   }
 
-  return lines;
+  return lines.map(mergeAnnotatedIntoRuns);
 }
 
 /**
@@ -197,6 +242,68 @@ function formatGeneratedAt(isoTimestamp: string): string {
 
 function formatReadTime(minutes: number): string {
   return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`;
+}
+
+/**
+ * Render a story's rich lines as `.txt`-safe emphasis: the markdown
+ * convention a plain-text reader already recognizes, since there is no
+ * character formatting a `.txt` file can carry.
+ *
+ * Bold and italic combine to `***text***`, the same nesting order Markdown
+ * itself uses. Underline is left unmarked: there is no equivalent plain-text
+ * convention (wrapping in `_..._` would read as italic instead), and
+ * `storyService.ts`'s prompt never asks the model for `<u>` in the first
+ * place — only `<em>`. Skipping it here is the same kind of bounded,
+ * documented loss as `escapePdfText`'s `?` for a WinAnsi-unmappable
+ * character, not a silent one.
+ */
+function renderRichLinesAsMarkdown(richLines: StoryTextRun[][]): string {
+  return richLines.map(line => line.map(runToMarkdown).join('')).join('\n');
+}
+
+function runToMarkdown(run: StoryTextRun): string {
+  if (!run.text) {
+    return '';
+  }
+  if (run.bold && run.italic) {
+    return `***${run.text}***`;
+  }
+  if (run.bold) {
+    return `**${run.text}**`;
+  }
+  if (run.italic) {
+    return `_${run.text}_`;
+  }
+  return run.text;
+}
+
+function runToXhtmlRun(run: StoryTextRun): string {
+  if (!run.text) {
+    return '';
+  }
+
+  let markup = escapeXmlText(run.text);
+  if (run.underline) {
+    markup = `<u>${markup}</u>`;
+  }
+  if (run.italic) {
+    markup = `<em>${markup}</em>`;
+  }
+  if (run.bold) {
+    markup = `<strong>${markup}</strong>`;
+  }
+  return markup;
+}
+
+function runToDocxRun(run: StoryTextRun): string {
+  const properties = [
+    run.bold ? '<w:b/>' : '',
+    run.italic ? '<w:i/>' : '',
+    run.underline ? '<w:u w:val="single"/>' : ''
+  ].join('');
+  const runProperties = properties ? `<w:rPr>${properties}</w:rPr>` : '';
+
+  return `<w:r>${runProperties}<w:t xml:space="preserve">${escapeXmlText(run.text)}</w:t></w:r>`;
 }
 
 export class ExportService {
@@ -316,26 +423,29 @@ export class ExportService {
    * way to assert on what an export actually contains.
    */
   async generateExportContent(input: SaveExportSeam['input']): Promise<Buffer> {
-    // Each branch takes only the readings its own document is built from. All
-    // three used to run for every format, and two of them are whole-story scans
-    // on the one route that caps its body at 500KB *because* the story is large:
+    // Each branch takes only the readings its own document is built from.
     //
-    // - `sanitizeStoryHtmlForExport` walks the markup tag by tag, and only the
-    //   `.html` document contains any markup — the other four are built from the
-    //   plain text. Four of the five formats were paying for a sanitize pass
-    //   whose result nothing in their output reads.
+    // - `sanitizeStoryHtmlForExport` walks the markup tag by tag for `.html`
+    //   alone; `extractStoryRichLines` does the equivalent walk for the other
+    //   four, which used to be built from `stripStoryHtmlForExport`'s fully
+    //   flattened plain text and so dropped every `<em>`/`<strong>` the story
+    //   generator writes — see that function's own comment for why a reader who
+    //   picked `.epub` or `.docx` specifically to keep the book was the one who
+    //   lost the most from it. `.txt` still prints from plain text, but a
+    //   markdown-flavored one (`renderRichLinesAsMarkdown`) that keeps the
+    //   emphasis as `**bold**`/`_italic_` rather than silently dropping it.
     // - `generateMetadata` splits the whole story on whitespace to count its
     //   words, and only the `.html` and `.txt` documents print the "Story
     //   Information" block it fills in. The PDF, EPUB, and DOCX renderers never
-    //   receive it.
+    //   receive it — each still reads `toPlainText`/`stripStoryHtmlForExport`
+    //   only where a word count is actually needed, not to build their document.
     //
     // That is the same reading `generateMetadata` already applies one level
     // down, where it counts the words once rather than once for the count and
-    // again for the read time derived from it. The documents themselves are
-    // unchanged: every branch is handed exactly what it was handed before.
+    // again for the read time derived from it.
     switch (input.format) {
       case 'pdf':
-        return Buffer.from(this.generatePDFContent(this.toPlainText(input), input), 'utf8');
+        return Buffer.from(this.generatePDFContent(extractStoryRichLines(input.content), input), 'utf8');
       case 'html': {
         const plainText = this.toPlainText(input);
         return Buffer.from(
@@ -345,12 +455,13 @@ export class ExportService {
       }
       case 'txt': {
         const plainText = this.toPlainText(input);
-        return Buffer.from(this.generateTextContent(plainText, this.generateMetadata(plainText, input), input), 'utf8');
+        const richText = renderRichLinesAsMarkdown(extractStoryRichLines(input.content));
+        return Buffer.from(this.generateTextContent(richText, this.generateMetadata(plainText, input), input), 'utf8');
       }
       case 'epub':
-        return this.generateEPUBContent(this.toPlainText(input), input);
+        return this.generateEPUBContent(extractStoryRichLines(input.content), input);
       case 'docx':
-        return this.generateDOCXContent(this.toPlainText(input), input);
+        return this.generateDOCXContent(extractStoryRichLines(input.content), input);
       default:
         throw new Error(`Unsupported format: ${input.format}`);
     }
@@ -381,44 +492,48 @@ export class ExportService {
    * measures the cross-reference offsets from whatever objects it is handed, so
    * the table stays correct however many pages a story runs to.
    */
-  private generatePDFContent(content: string, input: SaveExportSeam['input']): string {
+  private generatePDFContent(richLines: StoryTextRun[][], input: SaveExportSeam['input']): string {
     // The title heads the document, then a blank line, then the story — the
     // same order the `.txt` export puts them in.
     //
-    // Rendered the same way as well. `content` reaches this method as
-    // `stripStoryHtmlForExport(input.content)`, and the title beside it was the
-    // raw field: a PDF page whose body is plain prose and whose heading is the
-    // markup the body had removed. `title` is caller text on this route — the
-    // service is reached by anything that can POST `/api/export/save`, not only
-    // by the app — and the four other formats all say something about it, so the
-    // PDF was the one export that said nothing. `.html`, `.epub`, and `.docx`
-    // escape it, because a tag in a title has to reach those readers as text
-    // rather than as markup; `.txt` strips it, because there is no markup in a
-    // plain-text document to escape it into. A PDF page is the second of those:
-    // `escapePdfText` escapes the PDF's own delimiters and knows nothing about
-    // HTML, so `<em>Mira</em>` was drawn on the page exactly as written, and
-    // `&amp;` in a title stayed `&amp;` where the same title in the `.txt`
-    // export read `&`.
+    // Rendered the same way as well. The title reaches this method as an
+    // unformatted single run, not through `extractStoryRichLines`: it was the
+    // raw field, so a PDF page whose body is plain prose and whose heading is
+    // the markup the body had removed. `title` is caller text on this route —
+    // the service is reached by anything that can POST `/api/export/save`, not
+    // only by the app — and the four other formats all say something about it,
+    // so the PDF was the one export that said nothing. `.html`, `.epub`, and
+    // `.docx` escape it, because a tag in a title has to reach those readers as
+    // text rather than as markup; `.txt` strips it, because there is no markup
+    // in a plain-text document to escape it into. A PDF page is the second of
+    // those: `escapePdfText` escapes the PDF's own delimiters and knows
+    // nothing about HTML, so `<em>Mira</em>` was drawn on the page exactly as
+    // written, and `&amp;` in a title stayed `&amp;` where the same title in
+    // the `.txt` export read `&`.
     const title = stripStoryHtmlForExport(input.title);
-    const lines = [title, '', ...content.split('\n')].flatMap(paragraph =>
-      wrapPdfParagraph(paragraph, PDF_MAX_LINE_CHARACTERS)
+    const titleParagraph: StoryTextRun[] = title ? [{ text: title, ...PDF_UNFORMATTED_CHAR }] : [];
+    const blankSeparator: StoryTextRun[] = [];
+    const lines = [titleParagraph, blankSeparator, ...richLines].flatMap(paragraph =>
+      wrapFormattedParagraph(paragraph, PDF_MAX_LINE_CHARACTERS)
     );
 
-    const pages: string[][] = [];
+    const pages: StoryTextRun[][][] = [];
     for (let index = 0; index < lines.length; index += PDF_LINES_PER_PAGE) {
       pages.push(lines.slice(index, index + PDF_LINES_PER_PAGE));
     }
     // An empty story still gets a page, so the document is a valid PDF with a
     // page tree rather than one whose `/Kids` array is empty.
     if (pages.length === 0) {
-      pages.push(['']);
+      pages.push([[]]);
     }
 
-    // Objects 1, 2 and 3 are the catalog, the page tree and the font; each page
-    // then contributes its `/Page` and the content stream that page points at,
-    // in that order, so both numbers follow from the page's index.
-    const FIRST_PAGE_OBJECT_NUMBER = 4;
+    // Objects 1 and 2 are the catalog and the page tree; the `PDF_FONTS`
+    // entries follow, in the same `/Fn` order every page's `/Resources`
+    // declares them under; each page then contributes its `/Page` and the
+    // content stream that page points at, in that order, so both numbers
+    // follow from the page's index.
     const pageObjectNumber = (index: number) => FIRST_PAGE_OBJECT_NUMBER + index * 2;
+    const fontResourceNames = Object.keys(PDF_FONTS);
 
     const objects = [
       `<<
@@ -430,19 +545,22 @@ export class ExportService {
 /Kids [${pages.map((_page, index) => `${pageObjectNumber(index)} 0 R`).join(' ')}]
 /Count ${pages.length}
 >>`,
-      // `/Encoding` is not optional here. Without it a base font is read in
-      // StandardEncoding, which has no accented letter anywhere in it and puts
-      // the quotation marks at bytes WinAnsi uses for something else — so the
-      // bytes `escapePdfText` writes would name the wrong glyphs, which is the
-      // half of the mojibake a reader could never have worked around. See
-      // `escapePdfText` for the other half.
-      `<<
+      // `/Encoding` is not optional on any of these. Without it a base font is
+      // read in StandardEncoding, which has no accented letter anywhere in it
+      // and puts the quotation marks at bytes WinAnsi uses for something else
+      // — so the bytes `escapePdfText` writes would name the wrong glyphs,
+      // which is the half of the mojibake a reader could never have worked
+      // around. See `escapePdfText` for the other half.
+      ...fontResourceNames.map(
+        resourceName => `<<
 /Type /Font
 /Subtype /Type1
-/BaseFont /Helvetica
+/BaseFont /${PDF_FONTS[resourceName]}
 /Encoding /WinAnsiEncoding
 >>`
+      )
     ];
+    const fontObjectNumber = (resourceIndex: number) => 3 + resourceIndex;
 
     pages.forEach((pageLines, index) => {
       const contentStream = this.buildPdfPageContentStream(pageLines);
@@ -455,7 +573,7 @@ export class ExportService {
 /Contents ${pageObjectNumber(index) + 1} 0 R
 /Resources <<
 /Font <<
-/F1 3 0 R
+${fontResourceNames.map((resourceName, resourceIndex) => `/${resourceName} ${fontObjectNumber(resourceIndex)} 0 R`).join('\n')}
 >>
 >>
 >>`,
@@ -484,15 +602,44 @@ endstream`
    * whatever the escaping added at the boundary — a `\(` pair loses its
    * parenthesis and leaves a dangling backslash that escapes the character
    * after it.
+   *
+   * A line with more than one run emits one `/Fn ... Tf` / `(...) Tj` pair per
+   * run rather than one `Tj` for the whole line, switching fonts wherever the
+   * emphasis changes — `<em>` and `<strong>` used to have no font to switch
+   * to, since only `/F1` (plain Helvetica) was ever declared, so a PDF was the
+   * one export that showed a chapter's every italicized aside as ordinary
+   * text. `Tj` advances the current text position by the glyphs it just drew
+   * on its own, so chaining several on one line needs no manual x-advance
+   * bookkeeping — only the vertical `Td` move between lines does.
    */
-  private buildPdfPageContentStream(pageLines: string[]): string {
+  private buildPdfPageContentStream(pageLines: StoryTextRun[][]): string {
     const firstBaseline = PDF_PAGE_HEIGHT - PDF_MARGIN;
-    const operators = pageLines.flatMap((line, index) => [
+    const operators = pageLines.flatMap((lineRuns, index) => [
       index === 0 ? `${PDF_MARGIN} ${firstBaseline} Td` : `0 -${PDF_LINE_HEIGHT} Td`,
-      `(${escapePdfText(line)}) Tj`
+      ...(lineRuns.length > 0 ? lineRuns : [{ text: '', ...PDF_UNFORMATTED_CHAR }]).flatMap(run => [
+        `/${this.resolvePdfFontResource(run)} ${PDF_FONT_SIZE} Tf`,
+        `(${escapePdfText(run.text)}) Tj`
+      ])
     ]);
 
-    return [`BT`, `/F1 ${PDF_FONT_SIZE} Tf`, ...operators, `ET`].join('\n');
+    // No default `Tf` before the loop: every line has at least one run (a
+    // blank line is synthesized as one empty, unformatted run above), and
+    // every run sets its own font before its `Tj`, so nothing is ever shown
+    // without a font already selected.
+    return [`BT`, ...operators, `ET`].join('\n');
+  }
+
+  private resolvePdfFontResource(run: StoryTextRun): string {
+    if (run.bold && run.italic) {
+      return 'F4';
+    }
+    if (run.bold) {
+      return 'F2';
+    }
+    if (run.italic) {
+      return 'F3';
+    }
+    return 'F1';
   }
 
   /**
@@ -608,7 +755,7 @@ ${xrefOffset}
    * chapter it points at — actually containing the story, where the previous
    * version referenced a `chapter1.xhtml` it never wrote.
    */
-  private generateEPUBContent(plainText: string, input: SaveExportSeam['input']): Buffer {
+  private generateEPUBContent(richLines: StoryTextRun[][], input: SaveExportSeam['input']): Buffer {
     // Every value interpolated below lands in XML rather than in HTML, so it
     // goes through `escapeXmlText`: a control character an XML parser must
     // refuse is what makes an otherwise-correct `.epub` unopenable.
@@ -619,7 +766,7 @@ ${xrefOffset}
     // (including the copy this method itself hands back for verification)
     // vary from one call to the next.
     const bookId = `urn:x-fairytales-with-spice:${escapeXmlText(input.storyId)}`;
-    const chapterXhtml = this.toXhtmlBody(plainText);
+    const chapterXhtml = this.toXhtmlBody(richLines);
 
     const containerXml = `<?xml version="1.0" encoding="UTF-8"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
@@ -684,7 +831,7 @@ ${chapterXhtml}
    * literal text made to *look* like these zip entries' names, concatenated
    * with escaped plain text — not a zip archive at all.
    */
-  private generateDOCXContent(plainText: string, input: SaveExportSeam['input']): Buffer {
+  private generateDOCXContent(richLines: StoryTextRun[][], input: SaveExportSeam['input']): Buffer {
     const contentTypesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
@@ -697,13 +844,17 @@ ${chapterXhtml}
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
 </Relationships>`;
 
-    const paragraphs = [input.title, ...plainText.split('\n').map(line => line.trim())]
-      .filter(Boolean)
+    // The title stays a single unformatted run, same as every other export:
+    // it is caller text on this route, not story markup, so nothing here
+    // reads emphasis out of it.
+    const titleParagraph = `<w:p><w:r><w:t xml:space="preserve">${escapeXmlText(input.title)}</w:t></w:r></w:p>`;
+    const bodyParagraphs = richLines
+      .filter(line => line.length > 0)
       // `escapeXmlText` rather than `escapeHtml`, for the reason the EPUB body
       // uses it: a `.docx` is XML in a zip, and Word refuses the whole package
       // over one character XML does not admit.
-      .map(line => `<w:p><w:r><w:t xml:space="preserve">${escapeXmlText(line)}</w:t></w:r></w:p>`)
-      .join('\n    ');
+      .map(line => `<w:p>${line.map(runToDocxRun).join('')}</w:p>`);
+    const paragraphs = [titleParagraph, ...bodyParagraphs].join('\n    ');
 
     const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -723,17 +874,21 @@ ${chapterXhtml}
   }
 
   /**
-   * Turn the plain-text export into well-formed XHTML paragraphs: each
-   * non-blank line becomes its own escaped `<p>`, which is enough structure for
-   * a real XHTML document without re-parsing the sanitizer's HTML-oriented
-   * output (whose unclosed `<br>` void tags are not valid XHTML).
+   * Turn the story's rich lines into well-formed XHTML paragraphs: each
+   * non-blank line becomes its own `<p>` with real `<strong>`/`<em>`/`<u>`
+   * inline tags for the runs that carry them, which is enough structure for a
+   * real XHTML document without re-parsing the sanitizer's HTML-oriented
+   * `.html` output (whose unclosed `<br>` void tags are not valid XHTML).
+   *
+   * It used to flatten every line to plain text first, which is what made
+   * `.epub` — a format a reader picks specifically to keep the book — lose
+   * every emphasized word the story generator wrote (`storyService.ts` only
+   * ever asks the model for `<em>`).
    */
-  private toXhtmlBody(plainText: string): string {
-    return plainText
-      .split('\n')
-      .map(line => line.trim())
-      .filter(Boolean)
-      .map(line => `<p>${escapeXmlText(line)}</p>`)
+  private toXhtmlBody(richLines: StoryTextRun[][]): string {
+    return richLines
+      .filter(line => line.some(run => run.text.trim().length > 0))
+      .map(line => `<p>${line.map(runToXhtmlRun).join('')}</p>`)
       .join('\n');
   }
 

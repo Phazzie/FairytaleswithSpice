@@ -5,8 +5,10 @@ import { ExportService } from '../api/_lib/services/exportService';
 import {
   escapeHtml,
   escapePdfText,
+  extractStoryRichLines,
   sanitizeStoryHtmlForExport,
-  stripStoryHtmlForExport
+  stripStoryHtmlForExport,
+  StoryTextRun
 } from '../api/_lib/services/exportSanitizer';
 import { findCommentEnd } from '../shared/htmlTagScanner';
 import { SaveExportSeam } from '../api/_lib/types/contracts';
@@ -1063,6 +1065,111 @@ const pdfSample = String.raw`A (private) \\ path` + '\n';
 const expectedPdfSample = String.raw`A \(private\) \\\\ path `;
 assert(escapePdfText(pdfSample) === expectedPdfSample, 'escapePdfText should escape PDF string syntax');
 
+/** The plain text `extractStoryRichLines` output reads as once its formatting is discarded. */
+function richLinesPlainText(lines: StoryTextRun[][]): string {
+  return lines.map(line => line.map(run => run.text).join('')).join('\n');
+}
+
+/**
+ * `extractStoryRichLines` is `stripStoryHtmlForExport`'s own token loop with
+ * an emphasis annotation riding along on each character, not an independent
+ * reader built beside it — see that function's doc comment. This is the
+ * invariant that guarantees the two can never quietly disagree: run over every
+ * fixture already asserted against `stripStoryHtmlForExport` elsewhere in this
+ * file, so a future change to either reading's block-boundary or
+ * whitespace-normalization rules is caught here even if nothing else notices.
+ */
+for (const fixture of [
+  maliciousStoryHtml,
+  '<p>Plain paragraph, no emphasis at all.</p>',
+  '<p>Nested <strong><em>fierce whisper</em></strong> mid-sentence.</p>',
+  '<p>Mismatched <em>a</em>b</em>c<em>d</p><p>e</p>',
+  '<p>Unicode: Élodie &amp; the <em>🐉</em> dragon.</p>',
+  '<h3>Chapter Title</h3><p>First.</p><p>Second.</p>',
+  '<p>Trailing emphasis at the end<em>.</em></p>',
+  ''
+]) {
+  const plain = stripStoryHtmlForExport(fixture);
+  const richPlain = richLinesPlainText(extractStoryRichLines(fixture));
+  assert(
+    richPlain === plain,
+    `extractStoryRichLines should read the same plain text as stripStoryHtmlForExport for ${JSON.stringify(fixture)} ` +
+      `(rich=${JSON.stringify(richPlain)}, plain=${JSON.stringify(plain)})`
+  );
+}
+
+/** Every run in every line, in reading order — for asserting on formatting without caring about line breaks. */
+function flatRuns(lines: StoryTextRun[][]): StoryTextRun[] {
+  return lines.flat();
+}
+
+{
+  const runs = flatRuns(extractStoryRichLines('<p>Before <em>whisper</em> after.</p>'));
+  const emphasized = runs.find(run => run.text.trim() === 'whisper');
+  assert(emphasized, 'extractStoryRichLines should keep the emphasized word as its own run');
+  assert(emphasized!.italic && !emphasized!.bold && !emphasized!.underline, '<em> should mark a run italic only');
+  assert(
+    runs.some(run => run.text.includes('Before') && !run.italic),
+    'text outside <em> should not be marked italic'
+  );
+}
+
+{
+  const runs = flatRuns(extractStoryRichLines('<p>A <strong>bold</strong> word.</p>'));
+  const bolded = runs.find(run => run.text.trim() === 'bold');
+  assert(bolded && bolded.bold && !bolded.italic, '<strong> should mark a run bold only');
+}
+
+{
+  const runs = flatRuns(extractStoryRichLines('<p>A <u>quiet</u> word.</p>'));
+  const underlined = runs.find(run => run.text.trim() === 'quiet');
+  assert(underlined && underlined.underline && !underlined.bold && !underlined.italic, '<u> should mark a run underlined only');
+}
+
+{
+  const runs = flatRuns(extractStoryRichLines('<p><strong><em>fierce</em></strong></p>'));
+  const nested = runs.find(run => run.text.trim() === 'fierce');
+  assert(nested && nested.bold && nested.italic, 'nested <strong><em> should mark a run both bold and italic');
+}
+
+{
+  // Mismatched closing tags must clamp rather than leave italic "stuck on"
+  // for the rest of the story — the same defensive depth-clamping
+  // `exportSanitizer`'s other counters (`skip.depth`, `integrationPointDepth`)
+  // already rely on.
+  const runs = flatRuns(extractStoryRichLines('<p><em>a</em>b</em><em>c</em>d</p>'));
+  const strayClose = runs.find(run => run.text.trim() === 'b');
+  const reopened = runs.find(run => run.text.trim() === 'c');
+  const afterReopened = runs.find(run => run.text.trim() === 'd');
+  assert(strayClose && !strayClose.italic, 'text after a matched </em> should not be italic');
+  assert(
+    reopened && reopened.italic,
+    'a fresh <em> after a stray </em> should still turn italic on — the depth counter must clamp at zero ' +
+      'rather than go negative and need two more <em> tags to recover'
+  );
+  assert(afterReopened && !afterReopened.italic, 'italic should still turn off normally after the fresh <em> closes');
+}
+
+{
+  // A self-closing formatting tag has no content of its own and never
+  // reaches a matching close — reading it as an opener turned italic on with
+  // nothing to ever turn it back off, so every word for the rest of the story
+  // came out italic. Both spellings of self-closing (`<em/>` and `<em />`)
+  // must net to zero depth change.
+  for (const selfClosing of ['<em/>', '<em />', '<strong/>', '<u/>']) {
+    const html = `<p>Before${selfClosing}after should not be formatted.</p>`;
+    const runs = flatRuns(extractStoryRichLines(html));
+    assert(
+      runs.every(run => !run.bold && !run.italic && !run.underline),
+      `a self-closing ${selfClosing} should not leak formatting onto the rest of the story (got ${JSON.stringify(runs)})`
+    );
+    assert(
+      richLinesPlainText(extractStoryRichLines(html)).includes('after should not be formatted.'),
+      `text after a self-closing ${selfClosing} should still be present`
+    );
+  }
+}
+
 async function main(): Promise<void> {
   const exportService = new ExportService();
   const input: SaveExportSeam['input'] = {
@@ -1087,7 +1194,10 @@ async function main(): Promise<void> {
     format: 'txt'
   });
   assert(textExport.includes('Chapter One'), 'text export should include story text');
-  assert(textExport.includes('Hello safe reader.'), 'text export should include paragraph text');
+  assert(
+    textExport.includes('Hello **safe** reader.'),
+    'text export should include paragraph text, with the story\'s own <strong> kept as markdown emphasis'
+  );
   assert(!textExport.includes('<script'), 'text export should not include scripts');
   assert(!textExport.includes('onclick'), 'text export should not include event attributes');
   assert(!textExport.includes('javascript:'), 'text export should not include unsafe URLs');

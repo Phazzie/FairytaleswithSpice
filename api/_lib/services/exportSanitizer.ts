@@ -317,6 +317,240 @@ export function stripStoryHtmlForExport(html: string): string {
   return decodeBasicEntities(normalizePlainText(text));
 }
 
+/** One stretch of a line that carries the same inline emphasis throughout. */
+export interface StoryTextRun {
+  text: string;
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+}
+
+const BOLD_TAGS = new Set(['strong', 'b']);
+const ITALIC_TAGS = new Set(['em', 'i']);
+const UNDERLINE_TAGS = new Set(['u']);
+
+/**
+ * One character of the plain-text reading, tagged with the emphasis open at
+ * that point. Exported (with `mergeAnnotatedIntoRuns` below) because
+ * `ExportService`'s PDF renderer needs the same shape for its own annotated
+ * characters — a paragraph re-flattened for word-wrapping, in its case,
+ * rather than one read fresh off the token stream — and merges them back into
+ * runs the same way; two independent copies of one merge function were
+ * exactly the "same fact read twice" this module's own header comment already
+ * warns against for the tag scanner.
+ */
+export interface AnnotatedChar {
+  char: string;
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+}
+
+const UNFORMATTED = { bold: false, italic: false, underline: false };
+
+/**
+ * The story as lines of formatted runs — what every export but `.html` needs
+ * in order to keep the emphasis `stripStoryHtmlForExport` throws away.
+ *
+ * `generateExportContent` used to hand `.pdf`, `.txt`, `.epub`, and `.docx` the
+ * fully-stripped plain text, which drops `<em>` — the one inline tag
+ * `storyService.ts`'s prompt actually asks the model to write — along with the
+ * `strong`/`b`/`i`/`u` `ALLOWED_STORY_TAGS` already treats as legitimate story
+ * content on the `.html` path. A reader who picked `.epub` or `.docx`
+ * specifically to keep the book lost every emphasized word with no sign
+ * anything was missing.
+ *
+ * This is not built as an independent reader of `html`: it is `stripStoryHtmlForExport`'s
+ * own token loop, with each surviving character tagged by the emphasis open at
+ * that point instead of being appended to a bare string. Block-boundary
+ * decisions (`plainTextForTag`) and whitespace normalization
+ * (`normalizePlainText`'s state machine, ported here to run over annotated
+ * characters instead of a flat string) are the exact same rules for both
+ * readers, character for character — `stripStoryHtmlForExport(html)` always
+ * equals the plain text you get by concatenating this function's runs and
+ * discarding their formatting. `tests/export-sanitizer.test.ts` asserts that
+ * invariant directly, over the same fixtures (nested tags, entities, block
+ * breaks, mismatched closing tags) both functions are tested against, so the
+ * two can never quietly drift apart.
+ */
+export function extractStoryRichLines(html: string): StoryTextRun[][] {
+  const normalized = decodeAnnotatedEntities(normalizeAnnotated(annotateStoryTokens(html)));
+
+  const lines: AnnotatedChar[][] = [[]];
+  for (const character of normalized) {
+    if (character.char === '\n') {
+      lines.push([]);
+    } else {
+      lines[lines.length - 1].push(character);
+    }
+  }
+
+  return lines.map(mergeAnnotatedIntoRuns);
+}
+
+/**
+ * Read `html` into annotated characters: the same characters and boundaries
+ * `stripStoryHtmlForExport` produces, each carrying whether an inline emphasis
+ * tag is open around it.
+ *
+ * A tag's own boundary character — the space or newline `plainTextForTag`
+ * contributes so an inline tag never welds two words together — is never
+ * itself formatted, matching `stripStoryHtmlForExport`: the space `<em>` and
+ * `</em>` each contribute around "whisper" is ordinary spacing, not emphasized
+ * text. Depth is counted rather than flagged per tag, the same defensive
+ * reason `exportSanitizer`'s other counters are (`integrationPointDepth`,
+ * `skip.depth`): a mismatched closing tag must not turn emphasis off for the
+ * rest of the story, and clamping at zero is what keeps an extra `</em>` from
+ * doing that.
+ */
+function annotateStoryTokens(html: string): AnnotatedChar[] {
+  const chars: AnnotatedChar[] = [];
+  let plainSoFar = '';
+  let boldDepth = 0;
+  let italicDepth = 0;
+  let underlineDepth = 0;
+
+  const append = (text: string, formatting: typeof UNFORMATTED) => {
+    for (const char of text) {
+      chars.push({ char, ...formatting });
+    }
+    plainSoFar += text;
+  };
+
+  for (const token of removeNonStoryHtml(html)) {
+    const isTag = token.startsWith('<') && token.endsWith('>');
+    if (!isTag) {
+      append(token, { bold: boldDepth > 0, italic: italicDepth > 0, underline: underlineDepth > 0 });
+      continue;
+    }
+
+    const parsed = parseHtmlTag(token);
+    append(plainTextForTag(parsed, plainSoFar), UNFORMATTED);
+
+    // A self-closing formatting tag — `<em/>`, malformed but not dangerous —
+    // has no content of its own to emphasize, and never reaches a matching
+    // close the way `<em>...</em>` does. Reading it as an opener (`isClosing`
+    // is false on it, same as a real `<em>`) turned italic on with nothing to
+    // ever turn it back off, so every word for the rest of the story came out
+    // italic. Zero net depth change is the correct reading for an element
+    // with no content: nothing inside it to format, and nothing after it
+    // should be affected either.
+    if (!parsed || parsed.isSelfClosing) {
+      continue;
+    }
+
+    const delta = parsed.isClosing ? -1 : 1;
+    if (BOLD_TAGS.has(parsed.tagName)) {
+      boldDepth = Math.max(0, boldDepth + delta);
+    } else if (ITALIC_TAGS.has(parsed.tagName)) {
+      italicDepth = Math.max(0, italicDepth + delta);
+    } else if (UNDERLINE_TAGS.has(parsed.tagName)) {
+      underlineDepth = Math.max(0, underlineDepth + delta);
+    }
+  }
+
+  return chars;
+}
+
+/**
+ * `normalizePlainText`, ported to run over annotated characters instead of a
+ * flat string, so a rich export collapses whitespace and caps blank lines
+ * exactly where the plain-text export does — see `extractStoryRichLines`.
+ */
+function normalizeAnnotated(chars: AnnotatedChar[]): AnnotatedChar[] {
+  const normalized: AnnotatedChar[] = [];
+  let pendingSpace = false;
+  let newlineCount = 0;
+
+  for (const character of chars) {
+    if (character.char === '\n') {
+      trimTrailingInlineAnnotated(normalized);
+      if (newlineCount < 2) {
+        normalized.push({ char: '\n', ...UNFORMATTED });
+        newlineCount += 1;
+      }
+      pendingSpace = false;
+      continue;
+    }
+
+    if (isInlineWhitespace(character.char)) {
+      pendingSpace = normalized.length > 0 && newlineCount === 0;
+      continue;
+    }
+
+    if (pendingSpace && normalized.length > 0 && normalized[normalized.length - 1].char !== '\n') {
+      normalized.push({ char: ' ', ...UNFORMATTED });
+    }
+
+    normalized.push(character);
+    pendingSpace = false;
+    newlineCount = 0;
+  }
+
+  return trimAnnotated(normalized);
+}
+
+/** `trimTrailingInlineWhitespace`, ported to pop from an annotated array in place. */
+function trimTrailingInlineAnnotated(normalized: AnnotatedChar[]): void {
+  while (normalized.length > 0 && isInlineWhitespace(normalized[normalized.length - 1].char)) {
+    normalized.pop();
+  }
+}
+
+/** `.trim()`, ported to slice whitespace (inline or newline) from both ends of an annotated array. */
+function trimAnnotated(chars: AnnotatedChar[]): AnnotatedChar[] {
+  let start = 0;
+  let end = chars.length;
+
+  while (start < end && isTrimmableWhitespace(chars[start].char)) {
+    start += 1;
+  }
+  while (end > start && isTrimmableWhitespace(chars[end - 1].char)) {
+    end -= 1;
+  }
+
+  return chars.slice(start, end);
+}
+
+function isTrimmableWhitespace(char: string): boolean {
+  return char === '\n' || isInlineWhitespace(char);
+}
+
+/**
+ * `decodeBasicEntities`, ported to an annotated array.
+ *
+ * An entity such as `&amp;` always arrives as contiguous characters of a
+ * single story-text token, so every character in it shares one formatting
+ * state — normalization only ever inserts a plain space at a whitespace
+ * boundary, and no entity spelling contains whitespace. Decoding therefore
+ * only has to be safe at a run's own boundaries, not inside one: splitting on
+ * a formatting change first and running the string decoder over each run's
+ * text cannot cut an entity in half.
+ */
+function decodeAnnotatedEntities(chars: AnnotatedChar[]): AnnotatedChar[] {
+  return mergeAnnotatedIntoRuns(chars).flatMap(run => {
+    const decoded = decodeBasicEntities(run.text);
+    return [...decoded].map(char => ({ char, bold: run.bold, italic: run.italic, underline: run.underline }));
+  });
+}
+
+/** Group consecutive annotated characters that share the same emphasis into one run. */
+export function mergeAnnotatedIntoRuns(chars: AnnotatedChar[]): StoryTextRun[] {
+  const runs: StoryTextRun[] = [];
+
+  for (const character of chars) {
+    const last = runs[runs.length - 1];
+    if (last && last.bold === character.bold && last.italic === character.italic && last.underline === character.underline) {
+      last.text += character.char;
+      continue;
+    }
+
+    runs.push({ text: character.char, bold: character.bold, italic: character.italic, underline: character.underline });
+  }
+
+  return runs;
+}
+
 /**
  * What a tag contributes to the plain-text export: a line break where a reader
  * sees a boundary, and otherwise the single space that keeps the words on either
