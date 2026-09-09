@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ***WORST TO BEST*** Story Lab non-durable project storage — an unbounded in-memory `Map` grew forever (September 9, 2026)
+
+- `NonDurableInMemoryStoryProjectStore.saveProject()` wrote every saved Story Lab project into a
+  `Map` keyed by `projectId` with no cap and no eviction — every distinct project ever saved
+  through the process (each holding the full `SavedStoryProject`: every chapter's HTML, its
+  blueprint, its accepted memory cards) stayed resident forever. This store is live whenever
+  `STORY_LAB_CLOUD_STORAGE=non_durable_memory` is set, or whenever `DATABASE_URL` is absent and
+  the config falls back to it. On a warm Vercel instance — kept alive and reused across requests
+  — this grew without bound until the platform recycled the instance. The sibling `stateStore.ts`
+  transient snapshot map and `jobs/jobStore.ts`'s job store had both already been bounded for
+  exactly this failure mode; this store was the one unbounded `Map` left in `api/_lib`, simply
+  missed.
+- `saveProject()` and `loadProject()` now move a touched project to the newest end of an
+  LRU eviction order, and the store is capped at 200 projects (matching the transient snapshot
+  store's reasoning, since both hold the same shape of full-chapter-HTML payload) — the oldest
+  untouched project is evicted once the cap is exceeded. A read an owner check refuses does not
+  count as a use, so an unauthorized probe cannot keep another owner's project alive or reorder
+  their eviction queue.
+- Tests: the store stays bounded under a small cap with the oldest evicted and the most recently
+  saved/read retained; a denied cross-owner read does not reorder the eviction queue.
+
 ### ***WORST TO BEST*** Notification Service — a shared 5-item cap silently evicted undismissed error banners (September 9, 2026)
 
 - `NotificationService.addNotification()` truncated the notification list to the 5 most recent
