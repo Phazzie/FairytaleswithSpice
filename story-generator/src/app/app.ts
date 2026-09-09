@@ -21,7 +21,7 @@ import { STORY_LAB_THEME_SEEDS } from '../../../shared/storyLabThemeSeeds';
 import { stripStoryHtmlToText } from '../../../shared/storyTextBlocks';
 import { isVocabularyMember } from '../../../shared/storyStateVocabulary';
 import { buildStoryHtmlDocument } from './story-html-exporter';
-import { describeBatchCompletionNotice, describePartialBatchFailures } from './batch-progress';
+import { describeBatchCompletionNotice, describePartialBatchFailures, isValidPartialFailures } from './batch-progress';
 import { BlueprintValidationField, FormValidationService } from './form-validation.service';
 import { AcceptedMemoryCardEditDraft, MemoryCardDraftItem, MemoryCardService } from './memory-card.service';
 import {
@@ -2396,17 +2396,14 @@ export class App implements OnDestroy {
   }
 
   /**
-   * Whether a finished job's result is a payload `applyIteration` can read.
-   *
-   * The check is the set of fields that method dereferences, not a spot check of
-   * one of them. `batch.chapters` was already here; `summary.storyId` was not,
-   * and it is read first — `applyIteration` compares it against the current
-   * story before it touches the chapter list, so a result with a chapter array
-   * and no summary got past this guard and threw one line further in.
+   * Whether a finished job's result is a payload `applyIteration` can read —
+   * the set of fields that method (and `describeBatchCompletionNotice`, via
+   * `partialFailures`) dereferences, not a spot check of one of them.
    */
   private hasRenderableIterationPayload(payload: StoryIterationPayload | undefined): payload is StoryIterationPayload {
     return Array.isArray(payload?.batch?.chapters)
-      && typeof payload?.summary?.storyId === 'string';
+      && typeof payload?.summary?.storyId === 'string'
+      && isValidPartialFailures(payload?.batch?.partialFailures);
   }
 
   private closeJobEventSubscription() {

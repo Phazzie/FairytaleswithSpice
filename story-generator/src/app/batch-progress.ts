@@ -20,6 +20,26 @@ export interface ChapterFailureSummary {
   message: string;
 }
 
+/**
+ * Whether `value` is a shape `describePartialBatchFailures` can safely `.map()`
+ * over — `undefined` (no shortfall) or an array of well-formed entries.
+ *
+ * A completed job's result reaches the caller from the same untrusted places
+ * `hasRenderableIterationPayload` already guards against — an older stored
+ * row, a durable store answering a partial record — so `batch.partialFailures`
+ * needs the same fail-closed check as `batch.chapters`/`summary.storyId`
+ * rather than being trusted because the type declares it. A non-array value
+ * with a truthy `.length` (a string, for instance) would otherwise reach
+ * `.map()` inside the job event stream's callback and throw there, the exact
+ * failure mode that guard exists to prevent.
+ */
+export function isValidPartialFailures(value: unknown): value is ChapterFailureSummary[] | undefined {
+  return value === undefined || (
+    Array.isArray(value)
+    && value.every(entry => typeof entry?.chapterNumber === 'number' && typeof entry?.message === 'string')
+  );
+}
+
 export function describePartialBatchFailures(failures: ChapterFailureSummary[]): string {
   const chapterNumbers = failures.map(failure => failure.chapterNumber).join(', ');
   const noun = failures.length === 1 ? 'chapter' : 'chapters';

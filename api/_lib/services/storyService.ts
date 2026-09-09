@@ -525,11 +525,26 @@ export class StoryService {
           cliffhanger
         });
       } catch (chapterError: any) {
+        // A break, not a `continue`: the next chapter's prompt is built from
+        // `aggregatedRawHtml`, which only ever holds the chapters that
+        // actually generated, so a chapter attempted after this one would be
+        // written as a direct continuation of chapter `chapterNumber - 1`
+        // while still being numbered `chapterNumber + 1` — a reader-visible
+        // gap in a story that is supposed to be gap-free, and a continuity
+        // state built on a chapter that talks about events its own number
+        // says already happened. Keeping only a contiguous run starting at 1
+        // is what makes a shortfall here safe to keep instead of discarding.
         logError('Chapter generation failed', chapterError, context, { chapterNumber });
         failedChapters.push({
           chapterNumber,
           message: chapterError?.message || 'Unknown chapter generation error'
         });
+        failedChapters.push(...this.skippedChapterFailures(
+          chapterNumber + 1,
+          requestedChapterCount,
+          `Skipped: chapter ${chapterNumber} failed, and generating a later chapter without it would break story continuity.`
+        ));
+        break;
       }
     }
 
@@ -685,11 +700,24 @@ export class StoryService {
             cliffhanger: chapter.cliffhangerEnding
           });
         } catch (chapterError: any) {
+          // See the matching comment in `generateChaptersForStory`: continuing
+          // past a failed chapter number would generate the next one from
+          // `aggregatedRawHtml` as if the failed chapter never existed, while
+          // still labeling it with a number that implies it did — a gap the
+          // reader would see and a continuity state built on it. Stopping
+          // here keeps whatever ran before this chapter a contiguous,
+          // coherent prefix.
           logError('Continuation chapter generation failed', chapterError, context, { chapterNumber });
           failedChapters.push({
             chapterNumber,
             message: chapterError?.message || 'Unknown chapter generation error'
           });
+          failedChapters.push(...this.skippedChapterFailures(
+            chapterNumber + 1,
+            chapterNumber + (requestedChapterCount - offset),
+            `Skipped: chapter ${chapterNumber} failed, and generating a later chapter without it would break story continuity.`
+          ));
+          break;
         }
 
         workingChapterCount = chapterNumber;
@@ -816,13 +844,17 @@ export class StoryService {
    * actually failed, so a partial batch still accounts for every chapter the
    * caller asked for.
    */
-  private skippedChapterFailures(fromChapterNumber: number, requestedChapterCount: number): ChapterFailure[] {
+  private skippedChapterFailures(
+    fromChapterNumber: number,
+    requestedChapterCount: number,
+    reason: string = 'Skipped: insufficient time remaining in this request to safely generate this chapter'
+  ): ChapterFailure[] {
     const skipped: ChapterFailure[] = [];
 
     for (let chapterNumber = fromChapterNumber; chapterNumber <= requestedChapterCount; chapterNumber++) {
       skipped.push({
         chapterNumber,
-        message: 'Skipped: insufficient time remaining in this request to safely generate this chapter'
+        message: reason
       });
     }
 

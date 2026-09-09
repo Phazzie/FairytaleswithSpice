@@ -33,6 +33,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   functions, no DI) rather than growing `app.ts` past its own 3,100-line regrowth-guard test.
   `hasFinishedBatchQueueItems()`/`clearFinishedBatchQueue()` updated so a partial batch counts as
   finished and is clearable the same as a completed or failed one.
+- Codex's review of the first push found two further real issues, both fixed in the same PR:
+  - **Non-contiguous chapters.** Neither generation loop's per-chapter `catch` block stopped the
+    loop — on a mid-batch error it recorded the failure and moved on to the *next* chapter number,
+    generated from `aggregatedRawHtml` (only ever the chapters that succeeded), so chapters 1 and 3
+    could both generate with chapter 2 silently missing. Discarding the whole batch on any shortfall
+    had masked this every time. Both loops now `break` immediately after a chapter failure (mirroring
+    the existing time-budget `break`) and mark every later chapter skipped, so only a contiguous run
+    is ever kept.
+  - **Unvalidated `partialFailures` shape.** `hasRenderableIterationPayload` validated
+    `batch.chapters`/`summary.storyId` but not the new `batch.partialFailures` field it now also
+    dereferences, so a malformed stored value could throw inside the job-completion handler. Added
+    `isValidPartialFailures()` and folded it into the same guard.
 - Tests: flipped `story-lab-real-engine.test.ts`'s "discard on shortfall" case to assert the generated
   chapter is kept, `batch.partialFailures` is populated, and continuity extraction/persistence still
   run; added a case confirming a genuine zero-chapter result still hard-fails with the same error

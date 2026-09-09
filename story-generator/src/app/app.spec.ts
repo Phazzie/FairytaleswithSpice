@@ -1854,6 +1854,15 @@ describe('App', () => {
     ['no summary', {
       state: createState(),
       batch: { chapters: [createChapter()], totalWordCount: 900, suggestedNextPrompts: [] }
+    } as unknown as StoryIterationPayload],
+    // A non-array `partialFailures` with a truthy `.length` (a string, here)
+    // would otherwise reach `describeBatchCompletionNotice`'s `.map()` and
+    // throw there instead of being caught by this guard — the same "stuck in
+    // progress forever" failure mode the other two cases above exist for.
+    ['non-array partialFailures', {
+      summary: createSummary(),
+      state: createState(),
+      batch: { chapters: [createChapter()], totalWordCount: 900, suggestedNextPrompts: [], partialFailures: 'oops' }
     } as unknown as StoryIterationPayload]
   ];
 
