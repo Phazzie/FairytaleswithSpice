@@ -384,6 +384,86 @@ async function assertFallbackRetryIsSkippedWhenTheTrueBudgetIsAlreadyGone(): Pro
   }
 }
 
+/**
+ * A chapter that fails mid-batch for a reason other than the time budget
+ * (a provider error, not exhaustion) used to leave the loop free to attempt
+ * the *next* chapter number anyway — generated from whatever content had
+ * accumulated before the failure, so a story could end up with chapters 1
+ * and 3 and no chapter 2, numbered as if nothing were wrong. Once a
+ * discarded-on-any-shortfall caller stopped discarding that result (see
+ * `storyLabEngine.getZeroChapterGenerationError`), a gap like that would
+ * reach the reader. The loop must stop at the first failure instead, the
+ * same way it already stops when the time budget runs out.
+ */
+async function assertGenesisStopsAtFirstChapterFailureRatherThanLeavingAGap(): Promise<void> {
+  const originalGenerateText = XaiTextClient.prototype.generateText;
+  let calls = 0;
+
+  await withEnv({ XAI_API_KEY: 'test-xai-key' }, async () => {
+    XaiTextClient.prototype.generateText = async function (): Promise<XaiTextResponse> {
+      calls += 1;
+      if (calls === 2) {
+        throw new Error('Provider rejected chapter 2.');
+      }
+      return { text: `Chapter ${calls}\n\nSomething happened.`, model: 'grok-4.3', latencyMs: 0 };
+    };
+
+    try {
+      const result = await new StoryService().generateStory(storyInput(3));
+
+      assert.equal(result.success, true, 'a batch with one working chapter before the failure should still succeed overall');
+      assert.equal(calls, 2, 'chapter 3 must never be attempted once chapter 2 has failed — attempting it would build on a gap');
+      assert.equal(result.data?.chapters?.length, 1, 'only chapter 1 should be in the result');
+      assert.equal(result.data?.chapters?.[0]?.chapterNumber, 1, 'the one kept chapter must be chapter 1, not chapter 3');
+      assert.deepEqual(
+        result.metadata.partialFailures?.map(failure => failure.chapterNumber),
+        [2, 3],
+        `both the failed chapter and the one never attempted after it should be reported (got ${JSON.stringify(result.metadata.partialFailures)})`
+      );
+      assert(
+        !result.metadata.partialFailures?.[0]?.message.toLowerCase().includes('skipped'),
+        'the chapter that actually failed should report the provider failure, not a "skipped" message meant for chapters never attempted'
+      );
+      assert(
+        result.metadata.partialFailures?.[1]?.message.toLowerCase().includes('continuity'),
+        'the chapter never attempted after the gap should say why, not just that it was skipped for budget reasons'
+      );
+    } finally {
+      XaiTextClient.prototype.generateText = originalGenerateText;
+    }
+  });
+}
+
+async function assertContinuationStopsAtFirstChapterFailureRatherThanLeavingAGap(): Promise<void> {
+  const originalGenerateText = XaiTextClient.prototype.generateText;
+  let calls = 0;
+
+  await withEnv({ XAI_API_KEY: 'test-xai-key' }, async () => {
+    XaiTextClient.prototype.generateText = async function (): Promise<XaiTextResponse> {
+      calls += 1;
+      if (calls === 2) {
+        throw new Error('Provider rejected the second continuation chapter.');
+      }
+      return { text: `Continuation ${calls}\n\nSomething else happened.`, model: 'grok-4.3', latencyMs: 0 };
+    };
+
+    try {
+      const result = await new StoryService().continueChapter(continuationInput(3));
+
+      assert.equal(result.success, true, 'a continuation batch with one working chapter before the failure should still succeed overall');
+      assert.equal(calls, 2, 'the third continuation chapter must never be attempted once the second has failed');
+      assert.equal(result.data?.chapters?.length, 1, 'only the first continuation chapter should be in the result');
+      assert.deepEqual(
+        result.metadata.partialFailures?.map(failure => failure.chapterNumber),
+        [3, 4],
+        `both the failed chapter and the one never attempted after it should be reported, numbered from where the batch started (got ${JSON.stringify(result.metadata.partialFailures)})`
+      );
+    } finally {
+      XaiTextClient.prototype.generateText = originalGenerateText;
+    }
+  });
+}
+
 const storyLabBlueprint: LabGenerationSeam['input'] = {
   creature: 'siren',
   themes: [
@@ -487,6 +567,8 @@ async function assertEngineThreadsItsOwnStartTimeIntoStoryService(): Promise<voi
 async function main(): Promise<void> {
   await assertGenesisSkipsChaptersItCannotFinish();
   await assertContinuationSkipsChaptersItCannotFinish();
+  await assertGenesisStopsAtFirstChapterFailureRatherThanLeavingAGap();
+  await assertContinuationStopsAtFirstChapterFailureRatherThanLeavingAGap();
   await assertBatchChapterTimeoutIsCappedByRemainingBudget();
   await assertFirstChapterRefusesWhenBudgetIsAlreadyExhausted();
   await assertFirstChapterTimeoutIsCappedByTightBudget();
