@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ***WORST TO BEST*** Story Lab durable job store — a job could finish `completed` in Postgres while the client was told storage had failed (September 9, 2026)
+
+- `createJob()` and `updateJob()` in `postgresStoryLabJobStore.ts` each wrote the job row
+  (`INSERT`/`UPDATE story_lab_jobs`) and its append-only event-log row (`INSERT
+  story_lab_job_events`) as two separate, un-transacted `query()` calls — the Neon HTTP executor
+  behind this store has no cross-call transaction, so each call committed independently the moment
+  it succeeded. If the second write failed for any reason (including exhausting the existing
+  3-attempt retry on an event sequence-number race), the whole operation threw a generic
+  `StoryLabJobStoreError('STORY_LAB_JOB_STORAGE_FAILED', ...)`, which every route in
+  `jobRouteHandlers.ts` turns into a client-facing `503`. On the real payoff path — `finishJob()`
+  completing a genesis or continuation generation — the job row had, by that point, already been
+  durably written as `status: 'completed'` with the full (already-billed) result. The client was
+  still told the write failed; a retry, or simply polling `GET /jobs/{id}` a moment later, would find
+  the job already `completed` with a result the caller was never given. `createJob()`'s equivalent
+  failure instead left an orphaned job row the caller never received an id for.
+- Rewrote both operations as a single atomic statement each, using a `WITH ... AS (...)` CTE that
+  writes the job mutation and its event row in one round-trip — one Postgres statement is atomic by
+  definition, so a failure and a partial write can no longer disagree, and no executor-interface or
+  schema change was needed. `updateJob`'s update is naturally idempotent (same values twice is a
+  no-op), and `createJob`'s insert gained `ON CONFLICT (job_id) DO UPDATE` so retrying the *whole*
+  statement on an event sequence-number race never trips a spurious duplicate-key error instead of
+  the conflict it's actually retrying for. `updateJob`'s event snapshot is now built from the
+  `UPDATE ... RETURNING` row via `jsonb_build_object`/`jsonb_strip_nulls` directly in SQL, rather than
+  a second JS-side round trip that the old two-call design needed to read the just-written row back.
+- Tests: updated `tests/story-lab-job-store-port.test.ts` for the new single-query-per-write shape,
+  and added `testPostgresStoreWritesJobAndEventAtomically()`, which forces a permanent (non-conflict)
+  write failure on both `createJob` and `updateJob` and asserts exactly one `query()` call is issued
+  either way — the case the old two-call design could never make this guarantee for.
+- Posted the plan to `#claude-routines` tagging Codex for critique first; no critique came back within
+  the wait window, consistent with every prior run in this workspace, so proceeded per convention.
+
 ### ***WORST TO BEST*** Story Lab batch generation — a mid-batch shortfall discarded every already-generated, already-billed chapter (September 9, 2026)
 
 - `StoryService` already models a partial batch correctly: it generates chapter-by-chapter,
