@@ -329,8 +329,17 @@ const BOLD_TAGS = new Set(['strong', 'b']);
 const ITALIC_TAGS = new Set(['em', 'i']);
 const UNDERLINE_TAGS = new Set(['u']);
 
-/** One character of the plain-text reading, tagged with the emphasis open at that point. */
-interface AnnotatedChar {
+/**
+ * One character of the plain-text reading, tagged with the emphasis open at
+ * that point. Exported (with `mergeAnnotatedIntoRuns` below) because
+ * `ExportService`'s PDF renderer needs the same shape for its own annotated
+ * characters — a paragraph re-flattened for word-wrapping, in its case,
+ * rather than one read fresh off the token stream — and merges them back into
+ * runs the same way; two independent copies of one merge function were
+ * exactly the "same fact read twice" this module's own header comment already
+ * warns against for the tag scanner.
+ */
+export interface AnnotatedChar {
   char: string;
   bold: boolean;
   italic: boolean;
@@ -518,7 +527,7 @@ function decodeAnnotatedEntities(chars: AnnotatedChar[]): AnnotatedChar[] {
 }
 
 /** Group consecutive annotated characters that share the same emphasis into one run. */
-function mergeAnnotatedIntoRuns(chars: AnnotatedChar[]): StoryTextRun[] {
+export function mergeAnnotatedIntoRuns(chars: AnnotatedChar[]): StoryTextRun[] {
   const runs: StoryTextRun[] = [];
 
   for (const character of chars) {

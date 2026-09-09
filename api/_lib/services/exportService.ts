@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { SaveExportSeam, ApiResponse, EXPORT_FORMATS, ExportFormat } from '../types/contracts';
 import {
+  AnnotatedChar,
   escapeHtml,
   escapePdfText,
   escapeXmlText,
   extractStoryRichLines,
+  mergeAnnotatedIntoRuns,
   sanitizeStoryHtmlForExport,
   stripStoryHtmlForExport,
   StoryTextRun
@@ -69,26 +71,26 @@ const EXPORT_MIME_TYPES: Record<ExportFormat, string> = {
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 };
 
-/** One code point of a formatted line, carrying the emphasis its source run had. */
-interface PdfAnnotatedChar extends Omit<StoryTextRun, 'text'> {
-  char: string;
-}
-
 const PDF_UNFORMATTED_CHAR = { bold: false, italic: false, underline: false };
 
 /**
- * Spell a paragraph's runs out one code point per array entry. Iterating a
- * string with `for...of` yields whole code points rather than UTF-16 code
- * units, so an astral-plane character always stays whole here — the same
- * concern `capUtf8Bytes` (`shared/storyDownloadFilename.ts`) and the excerpt
- * cuts in `textExcerpt.ts`/`imageService.ts` each read code point by code
- * point for. Because each array entry already *is* one code point, chunking a
- * word that runs longer than a whole line is a plain `.slice()` below —
- * `wrapFormattedParagraph` needs no separate code-point-aware cutting
+ * Spell a paragraph's runs out one code point per array entry, in the same
+ * `AnnotatedChar` shape `extractStoryRichLines` builds its own characters in
+ * — reused rather than respelled here so this module and `exportSanitizer.ts`
+ * merge annotated characters back into runs (`mergeAnnotatedIntoRuns`) exactly
+ * one way between them, not two.
+ *
+ * Iterating a string with `for...of` yields whole code points rather than
+ * UTF-16 code units, so an astral-plane character always stays whole here —
+ * the same concern `capUtf8Bytes` (`shared/storyDownloadFilename.ts`) and the
+ * excerpt cuts in `textExcerpt.ts`/`imageService.ts` each read code point by
+ * code point for. Because each array entry already *is* one code point,
+ * chunking a word that runs longer than a whole line is a plain `.slice()`
+ * below — `wrapFormattedParagraph` needs no separate code-point-aware cutting
  * function the way the plain-string version of this wrap it replaced did.
  */
-function flattenRunsToChars(runs: StoryTextRun[]): PdfAnnotatedChar[] {
-  const chars: PdfAnnotatedChar[] = [];
+function flattenRunsToChars(runs: StoryTextRun[]): AnnotatedChar[] {
+  const chars: AnnotatedChar[] = [];
 
   for (const run of runs) {
     for (const char of run.text) {
@@ -97,23 +99,6 @@ function flattenRunsToChars(runs: StoryTextRun[]): PdfAnnotatedChar[] {
   }
 
   return chars;
-}
-
-/** The inverse of `flattenRunsToChars`: merge consecutive same-formatted characters back into runs. */
-function mergeCharsToRuns(chars: PdfAnnotatedChar[]): StoryTextRun[] {
-  const runs: StoryTextRun[] = [];
-
-  for (const character of chars) {
-    const last = runs[runs.length - 1];
-    if (last && last.bold === character.bold && last.italic === character.italic && last.underline === character.underline) {
-      last.text += character.char;
-      continue;
-    }
-
-    runs.push({ text: character.char, bold: character.bold, italic: character.italic, underline: character.underline });
-  }
-
-  return runs;
 }
 
 /**
@@ -134,8 +119,8 @@ function mergeCharsToRuns(chars: PdfAnnotatedChar[]): StoryTextRun[] {
  */
 function wrapFormattedParagraph(runs: StoryTextRun[], maxCharacters: number): StoryTextRun[][] {
   const chars = flattenRunsToChars(runs);
-  const words: PdfAnnotatedChar[][] = [];
-  let currentWord: PdfAnnotatedChar[] = [];
+  const words: AnnotatedChar[][] = [];
+  let currentWord: AnnotatedChar[] = [];
 
   for (const character of chars) {
     if (character.char === ' ') {
@@ -156,8 +141,8 @@ function wrapFormattedParagraph(runs: StoryTextRun[], maxCharacters: number): St
     return [[]];
   }
 
-  const lines: PdfAnnotatedChar[][] = [];
-  let current: PdfAnnotatedChar[] = [];
+  const lines: AnnotatedChar[][] = [];
+  let current: AnnotatedChar[] = [];
 
   for (const word of words) {
     const pieces =
@@ -187,7 +172,7 @@ function wrapFormattedParagraph(runs: StoryTextRun[], maxCharacters: number): St
     lines.push(current);
   }
 
-  return lines.map(mergeCharsToRuns);
+  return lines.map(mergeAnnotatedIntoRuns);
 }
 
 /**
