@@ -76,6 +76,7 @@ async function main() {
   await testMissingProjectMetadataFallbacks();
   await testNonDurableStoreIsBoundedByLeastRecentlyUsedEviction();
   await testNonDurableStoreDeniedReadsDoNotCountAsUse();
+  await testNonDurableStoreRejectsInvalidMaxProjects();
   await testPostgresStoreReadiness();
   await testPostgresStoreExecutorPath();
   await testPostgresStoreOwnerConflict();
@@ -197,6 +198,30 @@ async function testNonDurableStoreDeniedReadsDoNotCountAsUse() {
 
   const stillThere = await store.loadProject(owner, 'project-b');
   assert(stillThere.success && stillThere.data !== null, 'project-b should survive since the denied read never touched it');
+}
+
+/**
+ * A caller-supplied cap that isn't a positive whole number would defeat the
+ * bound instead of applying it — `NaN`/`Infinity` make `size > maxProjects`
+ * never true, so eviction silently never runs and the map is unbounded
+ * again; zero or a negative number make it true as soon as one project is
+ * saved, so the project just written would be evicted immediately. Invalid
+ * values must fall back to the default instead of being trusted verbatim.
+ */
+async function testNonDurableStoreRejectsInvalidMaxProjects() {
+  const invalidCaps = [0, -1, NaN, Infinity, -Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1];
+
+  for (const maxProjects of invalidCaps) {
+    const store = createNonDurableInMemoryStoryProjectStore({ now: () => now, maxProjects });
+    const saveResult = await store.saveProject(owner, createProjectWithId('project-a'));
+    assert(saveResult.success, `save should succeed for invalid maxProjects ${maxProjects}`);
+
+    const loadResult = await store.loadProject(owner, 'project-a');
+    assert(
+      loadResult.success && loadResult.data !== null,
+      `a just-saved project should still be readable when maxProjects (${maxProjects}) is invalid, not immediately evicted by it`
+    );
+  }
 }
 
 async function testPostgresStoreReadiness() {

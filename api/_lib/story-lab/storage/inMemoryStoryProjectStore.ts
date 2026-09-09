@@ -48,8 +48,25 @@ export function createNonDurableInMemoryStoryProjectStore(
 ): StoryProjectStore {
   return new NonDurableInMemoryStoryProjectStore(
     options.now ?? (() => new Date().toISOString()),
-    options.maxProjects ?? DEFAULT_MAX_STORY_LAB_PROJECTS
+    resolveMaxProjects(options.maxProjects)
   );
+}
+
+/**
+ * A caller-supplied cap that isn't a positive whole number would defeat the
+ * bound rather than apply it: `NaN` or `Infinity` make `size > maxProjects`
+ * never true, so eviction silently never runs and the map is unbounded
+ * again; zero or a negative number make it true as soon as one project is
+ * saved, so eviction runs on every save and the project just written is
+ * immediately gone. Falling back to the default keeps a bad value from
+ * doing either silently.
+ */
+function resolveMaxProjects(maxProjects: number | undefined): number {
+  if (maxProjects === undefined || !Number.isSafeInteger(maxProjects) || maxProjects <= 0) {
+    return DEFAULT_MAX_STORY_LAB_PROJECTS;
+  }
+
+  return maxProjects;
 }
 
 class NonDurableInMemoryStoryProjectStore implements StoryProjectStore {

@@ -27,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   their eviction queue.
 - Tests: the store stays bounded under a small cap with the oldest evicted and the most recently
   saved/read retained; a denied cross-owner read does not reorder the eviction queue.
+- The `maxProjects` override now falls back to the default for any value that isn't a positive
+  whole number: `NaN`/`Infinity` would have made the eviction check never trip (silently
+  unbounded again), and zero or a negative number would have made it trip on every save
+  (evicting the project just written). Covered by tests for zero, negative, non-finite,
+  fractional, and unsafe-integer inputs.
 
 ### ***WORST TO BEST*** Notification Service — a shared 5-item cap silently evicted undismissed error banners (September 9, 2026)
 
