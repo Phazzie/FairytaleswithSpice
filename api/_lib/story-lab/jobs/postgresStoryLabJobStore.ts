@@ -62,22 +62,6 @@ interface StoryLabJobEventRow {
   event_json: unknown;
 }
 
-const INSERT_JOB_SQL = `
-insert into story_lab_jobs (
-  job_id,
-  owner_user_id,
-  kind,
-  status,
-  current_step,
-  progress_percent,
-  idempotency_key,
-  story_id,
-  request_json,
-  created_at,
-  updated_at
-) values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11)
-`;
-
 /**
  * The terminal statuses as a SQL list, built from
  * `STORY_LAB_TERMINAL_JOB_STATUSES` rather than written out in the statement.
@@ -92,19 +76,119 @@ const TERMINAL_JOB_STATUS_SQL_LIST = STORY_LAB_TERMINAL_JOB_STATUSES
   .map(status => `'${status}'`)
   .join(', ');
 
+/**
+ * Writes the job row and its append-only event snapshot as ONE statement via a
+ * CTE, instead of two separate `query()` round trips. The Neon HTTP executor
+ * behind `StoryLabCloudQueryExecutor` has no cross-call transaction — each
+ * `query()` call commits on its own — so two separate writes here previously
+ * meant a job could finish `completed` in Postgres (already billed, real
+ * result) while the event-log write that followed it failed and the whole
+ * `updateJob` call threw, which every caller in `jobRouteHandlers.ts` turns
+ * into a client-facing 503 for a job that had, in fact, already succeeded. A
+ * single statement is atomic by definition: either both rows land or neither
+ * does, so a thrown error can no longer mean *half* of the write landed.
+ *
+ * This does not make every failure unambiguous. The Neon HTTP executor is a
+ * single request/response round trip per `query()` call; if the statement
+ * commits on the server but the response is lost afterward (a dropped
+ * connection, a client-side timeout), `query()` still rejects and the caller
+ * still sees `STORY_LAB_JOB_STORAGE_FAILED` for a write that, in fact,
+ * committed in full. That ambiguity is inherent to this driver and predates
+ * this file — it applies equally to `getJob`/`getEvents` and to every other
+ * store built on `StoryLabCloudQueryExecutor` — and resolving it would mean
+ * an idempotent outcome check after an ambiguous error (related to, but
+ * broader than, the createJob idempotency-key work tracked as #135) — a
+ * real, separate piece of work this change does not attempt. What this
+ * change does guarantee: a failure here is never
+ * a *partial* write — the two rows a caller depends on together either both
+ * exist or neither does.
+ *
+ * Retrying the *whole* statement on an event sequence-number race (see
+ * `writeJobAndEvent` below) needs no special idempotency handling on either
+ * leg: a failed CTE statement is one failed Postgres statement, so a failed
+ * attempt's job insert/update is rolled back along with its event insert —
+ * nothing from it is left committed for the next attempt to collide with.
+ * `CREATE_JOB_SQL`'s insert is deliberately left to fail on a genuine
+ * duplicate `job_id` (not a retry of its own attempt), the same as before
+ * this change; an `ON CONFLICT` upsert there would silently attach a new
+ * caller's event onto a pre-existing, possibly different-owner job instead.
+ */
+const CREATE_JOB_SQL = `
+with inserted as (
+  insert into story_lab_jobs (
+    job_id,
+    owner_user_id,
+    kind,
+    status,
+    current_step,
+    progress_percent,
+    idempotency_key,
+    story_id,
+    request_json,
+    created_at,
+    updated_at
+  ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11)
+  returning job_id, owner_user_id
+),
+event_insert as (
+  insert into story_lab_job_events (job_id, owner_user_id, sequence_number, event_json, created_at)
+  select
+    i.job_id,
+    i.owner_user_id,
+    (select coalesce(max(sequence_number), 0) + 1 from story_lab_job_events where job_id = i.job_id),
+    $12::jsonb,
+    $10
+  from inserted i
+  returning job_id
+)
+select job_id from event_insert
+`;
+
 const UPDATE_JOB_SQL = `
-update story_lab_jobs
-set
-  status = $3,
-  current_step = $4,
-  progress_percent = $5,
-  result_json = $6::jsonb,
-  error_json = $7::jsonb,
-  updated_at = $8,
-  completed_at = case when $3 in (${TERMINAL_JOB_STATUS_SQL_LIST}) then $8 else completed_at end
-where job_id = $1
-  and owner_user_id = $2
-returning job_id, owner_user_id, kind, status, current_step, progress_percent, created_at, updated_at, result_json, error_json
+with updated as (
+  update story_lab_jobs
+  set
+    status = $3,
+    current_step = $4,
+    progress_percent = $5,
+    result_json = $6::jsonb,
+    error_json = $7::jsonb,
+    updated_at = $8,
+    completed_at = case when $3 in (${TERMINAL_JOB_STATUS_SQL_LIST}) then $8 else completed_at end
+  where job_id = $1
+    and owner_user_id = $2
+  returning job_id, owner_user_id, kind, status, current_step, progress_percent, created_at, updated_at, result_json, error_json
+),
+event_insert as (
+  insert into story_lab_job_events (job_id, owner_user_id, sequence_number, event_json, created_at)
+  select
+    u.job_id,
+    u.owner_user_id,
+    (select coalesce(max(sequence_number), 0) + 1 from story_lab_job_events where job_id = u.job_id),
+    jsonb_build_object(
+      'eventId', $9::text,
+      'type', 'snapshot',
+      'emittedAt', $8::text,
+      'job', (
+        jsonb_build_object(
+          'jobId', u.job_id,
+          'kind', u.kind,
+          'status', u.status,
+          'currentStep', u.current_step,
+          'progressPercent', u.progress_percent,
+          'createdAt', u.created_at,
+          'updatedAt', u.updated_at
+        )
+        || case when u.result_json is null then '{}'::jsonb else jsonb_build_object('result', u.result_json) end
+        || case when u.error_json is null then '{}'::jsonb else jsonb_build_object('error', u.error_json) end
+      )
+    ),
+    $8
+  from updated u
+  returning job_id
+)
+select job_id, owner_user_id, kind, status, current_step, progress_percent, created_at, updated_at, result_json, error_json
+from updated
 `;
 
 const LOAD_JOB_SQL = `
@@ -113,20 +197,6 @@ from story_lab_jobs
 where job_id = $1
   and owner_user_id = $2
 limit 1
-`;
-
-const INSERT_EVENT_SQL = `
-insert into story_lab_job_events (
-  job_id,
-  owner_user_id,
-  sequence_number,
-  event_json,
-  created_at
-) values ($1, $2, (
-  select coalesce(max(sequence_number), 0) + 1
-  from story_lab_job_events
-  where job_id = $1
-), $3::jsonb, $4)
 `;
 
 const LOAD_EVENTS_SQL = `
@@ -179,7 +249,7 @@ class PostgresStoryLabJobStore implements StoryLabJobStore {
     const event = this.createSnapshotEvent(job, now);
 
     try {
-      await this.executor().query(INSERT_JOB_SQL, [
+      await this.writeJobAndEvent(CREATE_JOB_SQL, [
         job.jobId,
         ownerUserId,
         job.kind,
@@ -190,9 +260,9 @@ class PostgresStoryLabJobStore implements StoryLabJobStore {
         input.storyId ?? null,
         JSON.stringify(input.request ?? {}),
         job.createdAt,
-        job.updatedAt
+        job.updatedAt,
+        JSON.stringify(event)
       ]);
-      await this.insertEvent(job.jobId, ownerUserId, event, now);
       return clone(response);
     } catch (error) {
       throw storageError('create_job', error);
@@ -209,7 +279,7 @@ class PostgresStoryLabJobStore implements StoryLabJobStore {
     const now = input.now ?? this.getNow();
 
     try {
-      const result = await this.executor().query<StoryLabJobRow>(UPDATE_JOB_SQL, [
+      const result = await this.writeJobAndEvent<StoryLabJobRow>(UPDATE_JOB_SQL, [
         jobId,
         ownerUserId,
         input.status,
@@ -217,17 +287,15 @@ class PostgresStoryLabJobStore implements StoryLabJobStore {
         normalizeProgressPercent(input.progressPercent),
         nullableJson(input.result),
         nullableJson(input.error),
-        now
+        now,
+        this.nextEventId()
       ]);
       const row = result.rows[0];
       if (!row) {
         return null;
       }
 
-      const job = jobFromRow<TPublicResult>(row);
-      const event = this.createSnapshotEvent(job, now);
-      await this.insertEvent(jobId, ownerUserId, event, now);
-      return clone(createResponse(job));
+      return clone(createResponse(jobFromRow<TPublicResult>(row)));
     } catch (error) {
       throw storageError('update_job', error);
     }
@@ -269,27 +337,29 @@ class PostgresStoryLabJobStore implements StoryLabJobStore {
     }
   }
 
-  private async insertEvent<TPublicResult>(
-    jobId: string,
-    ownerUserId: string,
-    event: StoryLabJobEvent<TPublicResult>,
-    now: string
-  ): Promise<void> {
+  /**
+   * Runs one of the combined job-write + event-write CTE statements, retrying
+   * the whole statement when the event leg's sequence-number subquery races
+   * a concurrent write for the same job (see `isJobEventSequenceConflict`
+   * below). Retrying the *whole* statement is safe because a failed attempt
+   * commits nothing — the job insert/update in a failed CTE statement rolls
+   * back along with its event insert, so the next attempt starts clean
+   * rather than colliding with a partially-applied previous one.
+   */
+  private async writeJobAndEvent<T = unknown>(
+    sql: string,
+    params: readonly unknown[]
+  ): Promise<{ rows: T[] }> {
     for (let attempt = 1; attempt <= MAX_EVENT_INSERT_ATTEMPTS; attempt += 1) {
       try {
-        await this.executor().query(INSERT_EVENT_SQL, [
-          jobId,
-          ownerUserId,
-          JSON.stringify(event),
-          now
-        ]);
-        return;
+        return await this.executor().query<T>(sql, params);
       } catch (error) {
         if (!isJobEventSequenceConflict(error) || attempt === MAX_EVENT_INSERT_ATTEMPTS) {
           throw error;
         }
       }
     }
+    throw new Error('unreachable: writeJobAndEvent exhausted retries without returning or throwing');
   }
 
   private assertReady(): void {
@@ -335,11 +405,15 @@ class PostgresStoryLabJobStore implements StoryLabJobStore {
     emittedAt: string
   ): StoryLabJobEvent<TPublicResult> {
     return {
-      eventId: this.options.eventIdFactory?.() ?? `event_${randomUUID()}`,
+      eventId: this.nextEventId(),
       type: 'snapshot',
       emittedAt,
       job: clone(job)
     };
+  }
+
+  private nextEventId(): string {
+    return this.options.eventIdFactory?.() ?? `event_${randomUUID()}`;
   }
 
   private executor(): StoryLabCloudQueryExecutor {

@@ -19,6 +19,8 @@ class FakeJobExecutor implements StoryLabCloudQueryExecutor {
   readonly queries: Array<{ sql: string; params: readonly unknown[] }> = [];
   private readonly queuedRows: unknown[][] = [];
   failNextEventInsertConflicts = 0;
+  /** Set to make the next combined job-write statement throw a permanent (non-retryable) error. */
+  failNextWriteWithError: Error | null = null;
 
   enqueueRows(rows: unknown[]): void {
     this.queuedRows.push(rows);
@@ -26,7 +28,16 @@ class FakeJobExecutor implements StoryLabCloudQueryExecutor {
 
   async query<T = unknown>(sql: string, params: readonly unknown[]): Promise<{ rows: T[] }> {
     this.queries.push({ sql, params });
-    if (this.failNextEventInsertConflicts > 0 && sql.toLowerCase().includes('insert into story_lab_job_events')) {
+    // Both `CREATE_JOB_SQL` and `UPDATE_JOB_SQL` are a single CTE statement that writes
+    // the job row and its event row together, so this substring identifies either one.
+    const isCombinedJobWrite = sql.toLowerCase().includes('insert into story_lab_job_events');
+
+    if (this.failNextWriteWithError && isCombinedJobWrite) {
+      const error = this.failNextWriteWithError;
+      this.failNextWriteWithError = null;
+      throw error;
+    }
+    if (this.failNextEventInsertConflicts > 0 && isCombinedJobWrite) {
       this.failNextEventInsertConflicts -= 1;
       const error = new Error('duplicate key value violates unique constraint "story_lab_job_events_job_sequence_idx"') as Error & {
         code?: string;
@@ -52,8 +63,183 @@ async function main() {
   await testPostgresStoreTrimsDatabaseUrl();
   await testPostgresStoreCreatesUpdatesAndLoadsJobSnapshots();
   await testPostgresStoreRetriesEventSequenceConflicts();
+  await testPostgresStoreWritesJobAndEventAtomically();
+  await testPostgresStoreRejectsGenuineJobIdConflictRatherThanUpsertingOverIt();
+  await testPostgresStoreUpdateEventDoesNotStripNestedNulls();
 
   console.log('Story Lab job store port tests passed');
+}
+
+/**
+ * Regression test for a Codex finding on this fix's first draft: `CREATE_JOB_SQL`
+ * originally gave its insert an `ON CONFLICT (job_id) DO UPDATE`, on the mistaken
+ * belief that retrying the whole atomic statement on an event sequence-number race
+ * needed the job leg to be idempotent. It didn't — a failed CTE statement rolls
+ * back its job insert along with everything else — and the upsert instead meant a
+ * genuine `job_id` collision would silently attach a new caller's event onto a
+ * pre-existing, possibly different-owner job and return a response describing a
+ * job that was never actually inserted. A duplicate `job_id` must fail loudly.
+ */
+async function testPostgresStoreRejectsGenuineJobIdConflictRatherThanUpsertingOverIt() {
+  const executor = new FakeJobExecutor();
+  const jobId = 'job_44444444-4444-4444-8444-444444444444';
+  const store = createPostgresStoryLabJobStore({
+    databaseUrl: 'postgres://story-lab.example/test',
+    executor,
+    now: () => '2026-06-08T12:30:00.000Z',
+    jobIdFactory: () => jobId,
+    eventIdFactory: () => 'event_conflict'
+  });
+
+  const duplicateKeyError = new Error('duplicate key value violates unique constraint "story_lab_jobs_pkey"') as Error & {
+    code?: string;
+    constraint?: string;
+  };
+  duplicateKeyError.code = '23505';
+  duplicateKeyError.constraint = 'story_lab_jobs_pkey';
+  executor.failNextWriteWithError = duplicateKeyError;
+
+  let createError: unknown;
+  try {
+    await store.createJob({ kind: 'genesis', ownerUserId: 'user_job_owner' });
+  } catch (error) {
+    createError = error;
+  }
+
+  assert(
+    isStoryLabJobStoreError(createError),
+    'a genuine job_id primary-key conflict must fail loudly, not be swallowed by an upsert'
+  );
+  assert(
+    executor.queries.length === 1,
+    'a job_id primary-key conflict is not an event sequence-number race, so it must not be retried'
+  );
+}
+
+/**
+ * Regression test for a second Codex finding, addressed in two rounds. Round 1:
+ * the first draft wrapped the whole built event object in `jsonb_strip_nulls`,
+ * meaning to drop only an absent top-level `result`/`error` key, but that
+ * recursively strips every `null` anywhere inside `result_json`'s own structure —
+ * including required fields like
+ * `StoryIterationPayload.batch.stateDelta.fromRevision: number | null` — so a
+ * completed job's own event snapshot no longer matched its contract. Round 2:
+ * removing the wrapper outright made `result`/`error` unconditionally present as
+ * an explicit JSON `null` instead, which the create-path and in-memory event
+ * shapes never do (they omit the key entirely when absent) — a strict
+ * shared-contract client could reject the mismatch. The fix conditionally merges
+ * in each of `result`/`error` only when its column is not null, via `||` on two
+ * small `jsonb_build_object`s, leaving whatever is nested inside a *present*
+ * `result_json` untouched. There is no real Postgres here to run the SQL's JSON
+ * construction against, so this asserts against the SQL text itself.
+ */
+async function testPostgresStoreUpdateEventDoesNotStripNestedNulls() {
+  const executor = new FakeJobExecutor();
+  const jobId = 'job_55555555-5555-4555-8555-555555555555';
+  const store = createPostgresStoryLabJobStore({
+    databaseUrl: 'postgres://story-lab.example/test',
+    executor,
+    now: () => '2026-06-08T12:30:00.000Z',
+    jobIdFactory: () => jobId,
+    eventIdFactory: () => 'event_nulls'
+  });
+
+  executor.enqueueRows([
+    {
+      job_id: jobId,
+      owner_user_id: 'user_job_owner',
+      kind: 'genesis',
+      status: 'completed',
+      current_step: 'completed',
+      progress_percent: 100,
+      created_at: '2026-06-08T12:30:00.000Z',
+      updated_at: '2026-06-08T12:31:00.000Z',
+      result_json: { storyId: 'story_owner_safe', stateDelta: { fromRevision: null } },
+      error_json: null
+    }
+  ]);
+  await store.updateJob(jobId, {
+    ownerUserId: 'user_job_owner',
+    status: 'completed',
+    currentStep: 'completed',
+    progressPercent: 100,
+    result: { storyId: 'story_owner_safe', stateDelta: { fromRevision: null } },
+    now: '2026-06-08T12:31:00.000Z'
+  });
+
+  const updateQuery = executor.queries.find(query => query.sql.toLowerCase().includes('update story_lab_jobs'));
+  assert(updateQuery, 'updateJob should issue its combined update+event statement');
+  const sql = updateQuery.sql.toLowerCase();
+  assert(
+    !sql.includes('jsonb_strip_nulls'),
+    'updateJob event construction must not recursively strip nulls, or legitimate nested nulls in result_json (e.g. stateDelta.fromRevision) would be silently dropped from the event'
+  );
+  assert(sql.includes('jsonb_build_object'), 'updateJob should still build the event snapshot from the updated row');
+  assert(
+    sql.includes('result_json is null') && sql.includes('error_json is null'),
+    'an absent result/error must be conditionally omitted from the built event, not unconditionally emitted as an explicit null, to match the create-path and in-memory event shapes'
+  );
+}
+
+/**
+ * Regression test for the bug this store's write path had: `createJob` and
+ * `updateJob` each used to write the job row and its event row as two
+ * separate, un-transacted `query()` calls, so a failure on the second call
+ * could leave the first one's write durably committed while the caller was
+ * told the whole operation failed. A generation job's completing `updateJob`
+ * call, in particular, could commit `status: 'completed'` with the real
+ * result and still report a 503 to the client.
+ *
+ * There is no real Postgres here to prove transactional atomicity against,
+ * but the fix collapses both writes into one CTE statement, so the
+ * observable, testable half of the guarantee is that a permanent failure
+ * issues exactly one `query()` call per operation — never a first call that
+ * could have silently succeeded before a second one failed.
+ */
+async function testPostgresStoreWritesJobAndEventAtomically() {
+  const executor = new FakeJobExecutor();
+  const jobId = 'job_33333333-3333-4333-8333-333333333333';
+  const store = createPostgresStoryLabJobStore({
+    databaseUrl: 'postgres://story-lab.example/test',
+    executor,
+    now: () => '2026-06-08T12:30:00.000Z',
+    jobIdFactory: () => jobId,
+    eventIdFactory: () => 'event_atomic'
+  });
+
+  executor.failNextWriteWithError = new Error('connection reset');
+  let createError: unknown;
+  try {
+    await store.createJob({ kind: 'genesis', ownerUserId: 'user_job_owner' });
+  } catch (error) {
+    createError = error;
+  }
+  assert(isStoryLabJobStoreError(createError), 'a permanent write failure should surface a typed store error');
+  assert(
+    executor.queries.length === 1,
+    'createJob should write the job row and its event as one statement, so a failure issues exactly one query'
+  );
+
+  const queryCountBeforeUpdate = executor.queries.length;
+  executor.failNextWriteWithError = new Error('connection reset');
+  let updateError: unknown;
+  try {
+    await store.updateJob(jobId, {
+      ownerUserId: 'user_job_owner',
+      status: 'completed',
+      currentStep: 'completed',
+      progressPercent: 100,
+      result: { storyId: 'story_owner_safe' },
+      now: '2026-06-08T12:31:00.000Z'
+    });
+  } catch (error) {
+    updateError = error;
+  }
+  assert(isStoryLabJobStoreError(updateError), 'a permanent write failure on update should surface a typed store error');
+  assert(
+    executor.queries.length === queryCountBeforeUpdate + 1,
+    'updateJob should write the status change and its event as one statement, so a failure issues exactly one query — the job row is never left completed while the caller is told the write failed'
+  );
 }
 
 async function testPostgresStoreRetriesEventSequenceConflicts() {
@@ -286,8 +472,9 @@ async function testPostgresStoreCreatesUpdatesAndLoadsJobSnapshots() {
   assert(created.durability.mode === 'postgres', 'created Postgres jobs should report durable postgres mode');
   assert(created.durability.durable, 'created Postgres jobs should report durable true');
   assert(created.job.jobId === fixedJobId, 'Postgres create should use the injected job id');
+  assert(executor.queries.length === 1, 'create should write the job row and its initial event as one combined statement');
   assert(executor.queries[0]?.sql.toLowerCase().includes('insert into story_lab_jobs'), 'create should insert a job snapshot');
-  assert(executor.queries[1]?.sql.toLowerCase().includes('insert into story_lab_job_events'), 'create should insert an initial event snapshot');
+  assert(executor.queries[0]?.sql.toLowerCase().includes('insert into story_lab_job_events'), 'create should insert an initial event snapshot atomically with the job row');
 
   executor.enqueueRows([
     {
