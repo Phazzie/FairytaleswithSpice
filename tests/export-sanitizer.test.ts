@@ -1150,6 +1150,26 @@ function flatRuns(lines: StoryTextRun[][]): StoryTextRun[] {
   assert(afterReopened && !afterReopened.italic, 'italic should still turn off normally after the fresh <em> closes');
 }
 
+{
+  // A self-closing formatting tag has no content of its own and never
+  // reaches a matching close — reading it as an opener turned italic on with
+  // nothing to ever turn it back off, so every word for the rest of the story
+  // came out italic. Both spellings of self-closing (`<em/>` and `<em />`)
+  // must net to zero depth change.
+  for (const selfClosing of ['<em/>', '<em />', '<strong/>', '<u/>']) {
+    const html = `<p>Before${selfClosing}after should not be formatted.</p>`;
+    const runs = flatRuns(extractStoryRichLines(html));
+    assert(
+      runs.every(run => !run.bold && !run.italic && !run.underline),
+      `a self-closing ${selfClosing} should not leak formatting onto the rest of the story (got ${JSON.stringify(runs)})`
+    );
+    assert(
+      richLinesPlainText(extractStoryRichLines(html)).includes('after should not be formatted.'),
+      `text after a self-closing ${selfClosing} should still be present`
+    );
+  }
+}
+
 async function main(): Promise<void> {
   const exportService = new ExportService();
   const input: SaveExportSeam['input'] = {

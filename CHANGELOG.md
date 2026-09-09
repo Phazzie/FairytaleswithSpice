@@ -38,6 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tests: `export-sanitizer.test.ts` gained the plain-text-equivalence invariant plus direct assertions on
   bold/italic/underline/nesting/mismatched-tag depth-clamping; `export-service.test.ts` gained one
   assertion per format that `<em>`/`<strong>` survives as real emphasis rather than flattened text.
+- Fix (PR review): a self-closing formatting tag (`<em/>`) has no content of its own and never reaches a
+  matching close, so reading it as an opener — as `annotateStoryTokens`'s depth counter initially did —
+  turned italic on with nothing to ever turn it back off, leaking emphasis onto every word for the rest of
+  the story. Self-closing `strong`/`em`/`u` now nets to zero depth change; added a regression test over
+  both self-closing spellings (`<em/>` and `<em />`).
 
 ### ***WORST TO BEST*** Story Lab durable job store — a job could finish `completed` in Postgres while the client was told storage had failed (September 9, 2026)
 

@@ -427,7 +427,15 @@ function annotateStoryTokens(html: string): AnnotatedChar[] {
     const parsed = parseHtmlTag(token);
     append(plainTextForTag(parsed, plainSoFar), UNFORMATTED);
 
-    if (!parsed) {
+    // A self-closing formatting tag — `<em/>`, malformed but not dangerous —
+    // has no content of its own to emphasize, and never reaches a matching
+    // close the way `<em>...</em>` does. Reading it as an opener (`isClosing`
+    // is false on it, same as a real `<em>`) turned italic on with nothing to
+    // ever turn it back off, so every word for the rest of the story came out
+    // italic. Zero net depth change is the correct reading for an element
+    // with no content: nothing inside it to format, and nothing after it
+    // should be affected either.
+    if (!parsed || parsed.isSelfClosing) {
       continue;
     }
 
