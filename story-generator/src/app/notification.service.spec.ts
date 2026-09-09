@@ -79,4 +79,21 @@ describe('NotificationService', () => {
     expect(notifications.some(notification => notification.title === 'Generation failed')).toBe(true);
     expect(notifications.some(notification => notification.title === 'Slow connection')).toBe(true);
   });
+
+  it('keeps each category at its own cap when both are driven past their limits together', () => {
+    for (let i = 0; i < 25; i++) {
+      service.error(`Error #${i}`, 'Something failed.');
+      service.success('Saved', `Autosave #${i}`);
+    }
+
+    const notifications = service.notifications();
+    const persistent = notifications.filter(notification => !notification.autoHide);
+    const autoHiding = notifications.filter(notification => notification.autoHide);
+
+    expect(persistent.length).toBe(20);
+    expect(autoHiding.length).toBe(5);
+    expect(persistent[0].title).toBe('Error #24');
+    expect(persistent.some(notification => notification.title === 'Error #4')).toBe(false);
+    expect(autoHiding[0].message).toBe('Autosave #24');
+  });
 });
