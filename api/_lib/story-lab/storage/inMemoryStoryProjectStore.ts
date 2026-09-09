@@ -23,12 +23,50 @@ import {
 
 export interface NonDurableInMemoryStoryProjectStoreOptions {
   now?: () => string;
+  maxProjects?: number;
 }
+
+/**
+ * How many Story Lab projects this process keeps in memory at once.
+ *
+ * Every record holds a project's whole `SavedStoryProject` — every chapter's
+ * HTML, its blueprint, its accepted memory cards — and one is written on
+ * every save. This map was unbounded and nothing ever removed an entry, so it
+ * grew by one full project per save for as long as the process lived. A
+ * Vercel invocation is not the short-lived thing that makes that safe: an
+ * instance is kept warm and reused across requests, so every project saved
+ * on one accumulates here until the platform recycles it — and this store is
+ * live whenever `STORY_LAB_CLOUD_STORAGE=non_durable_memory` is set, or
+ * whenever `DATABASE_URL` is absent and the config falls back to it. The
+ * sibling `stateStore.ts` transient snapshot map and `NonDurableStoryLabJobStore`
+ * both bound themselves for exactly this reason; this store now does the same.
+ */
+const DEFAULT_MAX_STORY_LAB_PROJECTS = 200;
 
 export function createNonDurableInMemoryStoryProjectStore(
   options: NonDurableInMemoryStoryProjectStoreOptions = {}
 ): StoryProjectStore {
-  return new NonDurableInMemoryStoryProjectStore(options.now ?? (() => new Date().toISOString()));
+  return new NonDurableInMemoryStoryProjectStore(
+    options.now ?? (() => new Date().toISOString()),
+    resolveMaxProjects(options.maxProjects)
+  );
+}
+
+/**
+ * A caller-supplied cap that isn't a positive whole number would defeat the
+ * bound rather than apply it: `NaN` or `Infinity` make `size > maxProjects`
+ * never true, so eviction silently never runs and the map is unbounded
+ * again; zero or a negative number make it true as soon as one project is
+ * saved, so eviction runs on every save and the project just written is
+ * immediately gone. Falling back to the default keeps a bad value from
+ * doing either silently.
+ */
+function resolveMaxProjects(maxProjects: number | undefined): number {
+  if (maxProjects === undefined || !Number.isSafeInteger(maxProjects) || maxProjects <= 0) {
+    return DEFAULT_MAX_STORY_LAB_PROJECTS;
+  }
+
+  return maxProjects;
 }
 
 class NonDurableInMemoryStoryProjectStore implements StoryProjectStore {
@@ -37,7 +75,10 @@ class NonDurableInMemoryStoryProjectStore implements StoryProjectStore {
 
   private readonly records = new Map<string, StoredStoryProjectRecord>();
 
-  constructor(private readonly now: () => string) {}
+  constructor(
+    private readonly now: () => string,
+    private readonly maxProjects: number = DEFAULT_MAX_STORY_LAB_PROJECTS
+  ) {}
 
   isConfigured(): boolean {
     return true;
@@ -64,7 +105,8 @@ class NonDurableInMemoryStoryProjectStore implements StoryProjectStore {
       existingCreatedAt: existing?.createdAt
     });
 
-    this.records.set(record.projectId, cloneStoredStoryProjectRecord(record));
+    this.markProjectAsRecentlyUsed(record.projectId, cloneStoredStoryProjectRecord(record));
+    this.evictLeastRecentlyUsedProjects();
     return successResult(cloneStoredStoryProjectRecord(record));
   }
 
@@ -81,6 +123,11 @@ class NonDurableInMemoryStoryProjectStore implements StoryProjectStore {
     if (accessError) {
       return errorResult(accessError);
     }
+
+    // A read the owner check refuses is not a use: an unauthorized probe must
+    // not be able to keep someone else's project alive, or reorder the
+    // eviction queue at all.
+    this.markProjectAsRecentlyUsed(projectId, record);
 
     return successResult(cloneStoredStoryProjectRecord(record));
   }
@@ -119,6 +166,30 @@ class NonDurableInMemoryStoryProjectStore implements StoryProjectStore {
       projectId,
       deleted: true
     });
+  }
+
+  /**
+   * Move a project to the newest end of the eviction order.
+   *
+   * A `Map` orders by first insertion, and re-setting an existing key does not
+   * move it, so eviction without this would be by project *age* rather than by
+   * last use: a project someone is still editing would be dropped ahead of an
+   * abandoned one that happens to be newer.
+   */
+  private markProjectAsRecentlyUsed(projectId: string, record: StoredStoryProjectRecord): void {
+    this.records.delete(projectId);
+    this.records.set(projectId, record);
+  }
+
+  private evictLeastRecentlyUsedProjects(): void {
+    while (this.records.size > this.maxProjects) {
+      const oldestProjectId = this.records.keys().next().value;
+      if (oldestProjectId === undefined) {
+        return;
+      }
+
+      this.records.delete(oldestProjectId);
+    }
   }
 
   private authorizeOwner(user: AuthUser, record: StoredStoryProjectRecord): StoryProjectStoreError | null {

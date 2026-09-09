@@ -74,6 +74,9 @@ const privateStoryText = 'Elena revealed the private vault beneath the moonlit c
 async function main() {
   await testNonDurableMemoryStore();
   await testMissingProjectMetadataFallbacks();
+  await testNonDurableStoreIsBoundedByLeastRecentlyUsedEviction();
+  await testNonDurableStoreDeniedReadsDoNotCountAsUse();
+  await testNonDurableStoreRejectsInvalidMaxProjects();
   await testPostgresStoreReadiness();
   await testPostgresStoreExecutorPath();
   await testPostgresStoreOwnerConflict();
@@ -139,6 +142,86 @@ async function testNonDurableMemoryStore() {
   const deletedLoad = await store.loadProject(owner, 'project-1');
   assert(deletedLoad.success, 'loading deleted project should succeed with null');
   assert(deletedLoad.data === null, 'deleted project should not load');
+}
+
+/**
+ * The store used to grow by one whole project per save and never shrink. On a
+ * warm Vercel instance that's a full `SavedStoryProject` — every chapter's
+ * HTML, its blueprint, its accepted memory cards — held live per project
+ * saved on it, for as long as the instance is reused, so the count is now
+ * bounded the same way the sibling transient snapshot and job stores already
+ * are.
+ */
+async function testNonDurableStoreIsBoundedByLeastRecentlyUsedEviction() {
+  const store = createNonDurableInMemoryStoryProjectStore({ now: () => now, maxProjects: 2 });
+
+  const first = await store.saveProject(owner, createProjectWithId('project-a'));
+  assert(first.success, 'first save should succeed');
+  const second = await store.saveProject(owner, createProjectWithId('project-b'));
+  assert(second.success, 'second save should succeed');
+
+  // A read is a use too, so touching the oldest project keeps it out of the
+  // eviction queue ahead of a project nobody has looked at since it saved.
+  const reread = await store.loadProject(owner, 'project-a');
+  assert(reread.success && reread.data !== null, 'reading the oldest project should succeed before eviction');
+
+  const third = await store.saveProject(owner, createProjectWithId('project-c'));
+  assert(third.success, 'third save should succeed');
+
+  const stillThere = await store.loadProject(owner, 'project-a');
+  assert(stillThere.success && stillThere.data !== null, 'the project read most recently should survive eviction');
+
+  const evicted = await store.loadProject(owner, 'project-b');
+  assert(evicted.success && evicted.data === null, 'the least recently used project should be evicted');
+
+  const newest = await store.loadProject(owner, 'project-c');
+  assert(newest.success && newest.data !== null, 'the most recently saved project should still be readable');
+}
+
+/**
+ * A read the owner check refuses is not a use. Otherwise anyone who can guess
+ * a project id could reorder another owner's eviction queue.
+ */
+async function testNonDurableStoreDeniedReadsDoNotCountAsUse() {
+  const store = createNonDurableInMemoryStoryProjectStore({ now: () => now, maxProjects: 2 });
+
+  await store.saveProject(owner, createProjectWithId('project-a'));
+  await store.saveProject(owner, createProjectWithId('project-b'));
+
+  const deniedRead = await store.loadProject(otherUser, 'project-a');
+  assert(!deniedRead.success, 'cross-owner read should be denied');
+
+  await store.saveProject(owner, createProjectWithId('project-c'));
+
+  const evicted = await store.loadProject(owner, 'project-a');
+  assert(evicted.success && evicted.data === null, 'a denied read must not have kept project-a out of eviction');
+
+  const stillThere = await store.loadProject(owner, 'project-b');
+  assert(stillThere.success && stillThere.data !== null, 'project-b should survive since the denied read never touched it');
+}
+
+/**
+ * A caller-supplied cap that isn't a positive whole number would defeat the
+ * bound instead of applying it — `NaN`/`Infinity` make `size > maxProjects`
+ * never true, so eviction silently never runs and the map is unbounded
+ * again; zero or a negative number make it true as soon as one project is
+ * saved, so the project just written would be evicted immediately. Invalid
+ * values must fall back to the default instead of being trusted verbatim.
+ */
+async function testNonDurableStoreRejectsInvalidMaxProjects() {
+  const invalidCaps = [0, -1, NaN, Infinity, -Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1];
+
+  for (const maxProjects of invalidCaps) {
+    const store = createNonDurableInMemoryStoryProjectStore({ now: () => now, maxProjects });
+    const saveResult = await store.saveProject(owner, createProjectWithId('project-a'));
+    assert(saveResult.success, `save should succeed for invalid maxProjects ${maxProjects}`);
+
+    const loadResult = await store.loadProject(owner, 'project-a');
+    assert(
+      loadResult.success && loadResult.data !== null,
+      `a just-saved project should still be readable when maxProjects (${maxProjects}) is invalid, not immediately evicted by it`
+    );
+  }
 }
 
 async function testPostgresStoreReadiness() {
@@ -339,6 +422,33 @@ function createProject(): SavedStoryProject {
   return createSavedStoryProjectFixture({
     id: 'project-1',
     storyId: 'story-1',
+    title: 'Moonlit Chapel',
+    synopsis: 'A forbidden romance in a haunted chapel.',
+    now,
+    privateStoryText,
+    themeId: 'forbidden-oath',
+    themeLabel: 'Forbidden oath',
+    themeDescription: 'A vow that binds two enemies together.',
+    logline: 'A witch and her rival uncover a cursed chapel.',
+    chapterSummary: 'Elena finds the hidden vault.',
+    acceptedMemoryCards: [
+      {
+        id: 'memory-card-character-elena',
+        label: 'Character card',
+        title: 'Elena',
+        detail: 'Elena knows where the private vault starts.',
+        triggerLabel: 'Trigger: Elena',
+        acceptedAt: now
+      }
+    ]
+  });
+}
+
+/** Same fixture as `createProject()`, but with a caller-chosen id — for tests that need several distinct projects. */
+function createProjectWithId(id: string): SavedStoryProject {
+  return createSavedStoryProjectFixture({
+    id,
+    storyId: `story-${id}`,
     title: 'Moonlit Chapel',
     synopsis: 'A forbidden romance in a haunted chapel.',
     now,
