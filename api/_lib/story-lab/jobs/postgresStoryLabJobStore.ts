@@ -86,8 +86,22 @@ const TERMINAL_JOB_STATUS_SQL_LIST = STORY_LAB_TERMINAL_JOB_STATUSES
  * `updateJob` call threw, which every caller in `jobRouteHandlers.ts` turns
  * into a client-facing 503 for a job that had, in fact, already succeeded. A
  * single statement is atomic by definition: either both rows land or neither
- * does, and the caller's failure and the database's state can no longer
- * disagree.
+ * does, so a thrown error can no longer mean *half* of the write landed.
+ *
+ * This does not make every failure unambiguous. The Neon HTTP executor is a
+ * single request/response round trip per `query()` call; if the statement
+ * commits on the server but the response is lost afterward (a dropped
+ * connection, a client-side timeout), `query()` still rejects and the caller
+ * still sees `STORY_LAB_JOB_STORAGE_FAILED` for a write that, in fact,
+ * committed in full. That ambiguity is inherent to this driver and predates
+ * this file — it applies equally to `getJob`/`getEvents` and to every other
+ * store built on `StoryLabCloudQueryExecutor` — and resolving it would mean
+ * an idempotent outcome check after an ambiguous error (related to, but
+ * broader than, the createJob idempotency-key work tracked as #135) — a
+ * real, separate piece of work this change does not attempt. What this
+ * change does guarantee: a failure here is never
+ * a *partial* write — the two rows a caller depends on together either both
+ * exist or neither does.
  *
  * Retrying the *whole* statement on an event sequence-number race (see
  * `writeJobAndEvent` below) needs no special idempotency handling on either

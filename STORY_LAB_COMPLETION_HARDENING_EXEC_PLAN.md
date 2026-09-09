@@ -115,7 +115,7 @@ Relevant issues:
 - #128: recovery docs guidance drift/tool fallback notes.
 - #127: concurrent index migration strategy before live durable tables.
 - #126: engine exceptions during route-backed jobs.
-- #125: transaction-capable Postgres job mutations — closed by PR #357, which rewrote `createJob()`/`updateJob()` in `postgresStoryLabJobStore.ts` to write their job-row mutation and event-append as one atomic CTE statement each.
+- #125: transaction-capable Postgres job mutations — addressed by PR #357 (in review as of this note, not yet merged to `main`), which rewrites `createJob()`/`updateJob()` in `postgresStoryLabJobStore.ts` to write their job-row mutation and event-append as one atomic CTE statement each. Treat as open until that PR merges. Even merged, this does not resolve the separate, pre-existing ambiguity of a Neon HTTP `.query()` call whose response is lost after the server has already committed.
 
 ## Plan of Work
 
@@ -275,12 +275,12 @@ Acceptance:
 
 Scope:
 
-- Complete #126, #131, and #135 before claiming durable jobs (#125 closed by PR #357).
+- Complete #126, #131, and #135 before claiming durable jobs (#125 addressed by PR #357, in review — not yet merged; leave open until it lands).
 - Keep active UI labels honest until process-loss proof exists.
 
 Sub-checklist:
 
-- [x] Add transaction-capable Postgres job mutations where multi-row or state-transition safety requires it. (PR #357: `createJob()`/`updateJob()` each write their job-row mutation and event-append as one atomic CTE statement, closing #125. This is scoped to the two writes those methods already made — it is not the broader outbox/idempotency/dispatcher work Slice 6's other items and `STORY_LAB_LIVING_BOOK_AND_DURABLE_JOBS_EXEC_PLAN.md` Phase B still scope.)
+- [ ] Add transaction-capable Postgres job mutations where multi-row or state-transition safety requires it. (PR #357, in review as of this note: `createJob()`/`updateJob()` each write their job-row mutation and event-append as one atomic CTE statement, addressing #125. Scoped to the two writes those methods already made — not the broader outbox/idempotency/dispatcher work Slice 6's other items and `STORY_LAB_LIVING_BOOK_AND_DURABLE_JOBS_EXEC_PLAN.md` Phase B still scope, and not the separate, pre-existing ambiguity of a Neon HTTP `.query()` response lost after the server has already committed. Check this box once that PR merges.)
 - [ ] Add idempotency-key retry behavior for job creation.
 - [ ] Memoize job-store config only when it cannot freeze stale env/test state.
 - [ ] Handle engine exceptions during route-backed jobs with durable failure records.

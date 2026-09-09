@@ -68,9 +68,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     a live integration test could catch; the existing fake-executor tests verify the one thing that
     *is* this codebase's responsibility — that a failure surfaces after exactly one write call, never
     a second one that could partially apply.
-  - Updated `STORY_LAB_LIVING_BOOK_AND_DURABLE_JOBS_EXEC_PLAN.md`'s current-state findings to mark the
-    two-separate-writes gap it had recorded as closed by this PR, without claiming the broader
-    transactional-outbox/idempotency/dispatcher work that plan's Phase B still scopes.
+  - Updated `STORY_LAB_LIVING_BOOK_AND_DURABLE_JOBS_EXEC_PLAN.md`'s current-state findings for the
+    two-separate-writes gap it had recorded, without claiming the broader transactional-outbox/
+    idempotency/dispatcher work that plan's Phase B still scopes.
+  A third review round found two more real issues:
+  - **The doc comment overclaimed the guarantee.** "The caller's failure and the database's state can
+    no longer disagree" is only true for the *partial*-write failure this PR fixes — it does not hold
+    for a Neon HTTP `.query()` call whose response is lost after the server already committed, a
+    separate, pre-existing ambiguity inherent to this driver that this PR does not attempt to resolve.
+    Corrected the doc comment to state precisely what is and isn't guaranteed.
+  - **The doc updates claimed this PR was already merged.** The exec-plan and recovery-changelog
+    updates above said the gap was "closed"/"merged" while this PR was still in review. Corrected all
+    of them to say "in review, not yet merged" and left the completion-plan checklist item unchecked.
 
 ### ***WORST TO BEST*** Story Lab batch generation — a mid-batch shortfall discarded every already-generated, already-billed chapter (September 9, 2026)
 
