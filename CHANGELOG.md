@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ***WORST TO BEST*** Notification Service — a shared 5-item cap silently evicted undismissed error banners (September 9, 2026)
+
+- `NotificationService.addNotification()` truncated the notification list to the 5 most recent
+  entries for every notification type, unconditionally. But `error()` sets `autoHide: false`
+  specifically so a failure "stays visible by default" until the user dismisses it — a guarantee
+  the class's own spec asserted only against the auto-hide timer, never against this cap.
+  `app.ts` fires `success`/`info`/`warning` toasts from 26 call sites (save, cloud sync,
+  memory-card accept, generation progress, and more). So a genuine generation failure (error
+  banner, `autoHide: false`) could sit on screen while the reader kept working, only to be
+  silently spliced out of the array the moment five more routine toasts fired — no log, no
+  indicator, no user action, even though the underlying failure still needed attention.
+- `addNotification()` now caps auto-hiding and persistent (`autoHide: false`) notifications
+  independently: auto-hiding toasts still rotate at 5 (unchanged toast-churn UX), while
+  persistent notifications are exempt from that rotation and instead bounded by their own
+  ceiling of 20, so a user who never dismisses anything still can't grow the list unboundedly.
+  Newest-first ordering is preserved across both.
+- Tests: an error notification now has a regression test proving it survives a burst of 8
+  subsequent routine toasts; added cases for the auto-hide cap staying at 5, the 20-item
+  persistent ceiling evicting its oldest entry, and persistent/auto-hiding notifications never
+  evicting each other.
+
 ### ***WORST TO BEST*** Export fidelity — `<em>`/`<strong>` silently vanished from 4 of the app's 5 export formats (September 9, 2026)
 
 - `storyService.ts`'s prompt tells the model to write `<em>` for emphasis, and `ALLOWED_STORY_TAGS`

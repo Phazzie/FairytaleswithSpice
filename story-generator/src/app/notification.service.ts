@@ -20,6 +20,13 @@ export type NotificationOptions = Partial<Pick<Notification, 'autoHide' | 'durat
   providedIn: 'root'
 })
 export class NotificationService {
+  // Auto-hiding toasts (success/info/routine warnings) churn constantly, so only the
+  // most recent few are worth keeping on screen at once.
+  private static readonly MAX_AUTO_HIDE_NOTIFICATIONS = 5;
+  // Persistent (autoHide: false) notifications stay until the user dismisses them —
+  // this only bounds unbounded growth if a user never dismisses any of them.
+  private static readonly MAX_PERSISTENT_NOTIFICATIONS = 20;
+
   private readonly notificationsSignal = signal<Notification[]>([]);
   private idSequence = 0;
 
@@ -41,13 +48,38 @@ export class NotificationService {
       timestamp: new Date()
     };
 
-    this.notificationsSignal.update(current => [notification, ...current].slice(0, 5));
+    this.notificationsSignal.update(current => this.withNotificationAdded(current, notification));
 
     if (notification.autoHide) {
       setTimeout(() => this.removeNotification(notification.id), notification.duration);
     }
 
     return notification.id;
+  }
+
+  /**
+   * Caps auto-hiding and persistent notifications independently, so a burst of routine
+   * toasts (autoHide: true) can never silently evict a persistent error/warning banner
+   * the user hasn't dismissed yet, and vice versa. Newest-first order is preserved.
+   */
+  private withNotificationAdded(current: Notification[], notification: Notification): Notification[] {
+    const combined = [notification, ...current];
+    let autoHideKept = 0;
+    let persistentKept = 0;
+    const kept: Notification[] = [];
+
+    for (const candidate of combined) {
+      if (candidate.autoHide) {
+        if (autoHideKept >= NotificationService.MAX_AUTO_HIDE_NOTIFICATIONS) continue;
+        autoHideKept++;
+      } else {
+        if (persistentKept >= NotificationService.MAX_PERSISTENT_NOTIFICATIONS) continue;
+        persistentKept++;
+      }
+      kept.push(candidate);
+    }
+
+    return kept;
   }
 
   removeNotification(id: string): void {
