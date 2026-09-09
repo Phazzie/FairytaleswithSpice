@@ -19,9 +19,9 @@
  *   artifact state from.
  *
  * `slice` counts UTF-16 code units, so a cut can land between the halves of a
- * surrogate pair and leave a lone surrogate — the failure `chunkByCodePoint` in
- * the export service and `capUtf8Bytes` in the download filename both iterate
- * code points to avoid. `JSON.stringify` escapes such a surrogate rather than
+ * surrogate pair and leave a lone surrogate — the failure `flattenRunsToChars`
+ * in the export service and `capUtf8Bytes` in the download filename both
+ * iterate code points to avoid. `JSON.stringify` escapes such a surrogate rather than
  * refusing it, so nothing throws: the prompt is simply built with a character
  * the story never contained, and the story's own emoji or astral-script
  * character is gone.

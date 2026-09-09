@@ -164,7 +164,7 @@ const SCENE_SENTENCE_COUNT = 3;
  *   `"Where is she?"` reached the model as `"Where is she."`, and the final
  *   sentence lost its punctuation entirely.
  * - **`substring(0, 200)` counts UTF-16 code units.** A cut between the halves
- *   of a surrogate pair leaves a lone surrogate — the failure `chunkByCodePoint`
+ *   of a surrogate pair leaves a lone surrogate — the failure `flattenRunsToChars`
  *   in the export service and `capUtf8Bytes` in the download filename both
  *   iterate code points to avoid — and a cut anywhere else lands mid-word, so
  *   the prompt ended on a fragment. Capping at a code-point boundary and then

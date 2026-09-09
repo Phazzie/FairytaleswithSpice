@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ***WORST TO BEST*** Export fidelity — `<em>`/`<strong>` silently vanished from 4 of the app's 5 export formats (September 9, 2026)
+
+- `storyService.ts`'s prompt tells the model to write `<em>` for emphasis, and `ALLOWED_STORY_TAGS`
+  (`exportSanitizer.ts`) already treats `em`/`strong`/`b`/`i`/`u` as legitimate story content — but only
+  the `.html` export (`sanitizeStoryHtmlForExport`) ever kept any of it. `generateExportContent()` built
+  `.pdf`, `.txt`, `.epub`, and `.docx` from `stripStoryHtmlForExport()`'s fully flattened plain text,
+  whose `plainTextForTag` collapses every inline tag to a bare space. So every italicized aside and
+  emphasized word the AI wrote silently disappeared from four of the app's five export formats —
+  including `.epub` and `.docx`, the two formats a reader picks specifically to keep the book — with no
+  comment anywhere flagging it as a deliberate cut, and zero test coverage asserting emphasis survives a
+  non-HTML export.
+- Added `extractStoryRichLines()` to `exportSanitizer.ts`: not an independent reader of the story markup,
+  but `stripStoryHtmlForExport`'s own token loop with each surviving character tagged by the inline
+  emphasis open at that point, so the two can never quietly disagree about what plain text a story reads
+  as — an invariant test in `export-sanitizer.test.ts` asserts exactly that across a battery of fixtures
+  (nested tags, entities, block breaks, mismatched closing tags).
+- `.txt` now renders bold as `**text**` and italic as `_text_` (the markdown convention); `.epub` writes
+  real `<em>`/`<strong>`/`<u>` inline tags instead of flattening every line to a bare `<p>`; `.docx` emits
+  one `<w:r>` per formatted run with `<w:rPr><w:b/></w:rPr>`/`<w:i/>`/`<w:u w:val="single"/>` instead of one
+  plain run per paragraph.
+- `.pdf` gained three more standard-14 font resources (`Helvetica-Bold`/`-Oblique`/`-BoldOblique`, the
+  same `/WinAnsiEncoding` as the existing `/F1`) and switches `/Fn` between `Tj` operators per formatted
+  run on a line — `Tj` advances the text position on its own after drawing, so no glyph-width math was
+  needed beyond the existing character-count-based line wrapping (which already ignores real glyph
+  widths). Underline is left unmarked in `.pdf` and `.txt` specifically: `.pdf` would need a manual
+  underline stroke against a width model this generator deliberately doesn't have, and `.txt` has no
+  plain-text convention for it that wouldn't collide with italics — both documented scope cuts in the
+  same spirit as `escapePdfText`'s `?` fallback for a WinAnsi-unmappable character, not silent ones.
+- Tests: `export-sanitizer.test.ts` gained the plain-text-equivalence invariant plus direct assertions on
+  bold/italic/underline/nesting/mismatched-tag depth-clamping; `export-service.test.ts` gained one
+  assertion per format that `<em>`/`<strong>` survives as real emphasis rather than flattened text.
+
 ### ***WORST TO BEST*** Story Lab durable job store — a job could finish `completed` in Postgres while the client was told storage had failed (September 9, 2026)
 
 - `createJob()` and `updateJob()` in `postgresStoryLabJobStore.ts` each wrote the job row

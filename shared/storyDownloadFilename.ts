@@ -129,7 +129,7 @@ export function buildStoryDownloadFilename(title: string): string {
  * Measured per code point rather than by encoding the whole string and slicing
  * the bytes: a cut between the bytes of one character encodes as U+FFFD, and a
  * cut between the halves of a surrogate pair does the same — the reason
- * `ExportService`'s `chunkByCodePoint` iterates code points too.
+ * `ExportService`'s `flattenRunsToChars` iterates code points too.
  */
 function capUtf8Bytes(value: string, maxBytes: number): string {
   let capped = '';
