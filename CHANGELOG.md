@@ -25,18 +25,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rewrote both operations as a single atomic statement each, using a `WITH ... AS (...)` CTE that
   writes the job mutation and its event row in one round-trip — one Postgres statement is atomic by
   definition, so a failure and a partial write can no longer disagree, and no executor-interface or
-  schema change was needed. `updateJob`'s update is naturally idempotent (same values twice is a
-  no-op), and `createJob`'s insert gained `ON CONFLICT (job_id) DO UPDATE` so retrying the *whole*
-  statement on an event sequence-number race never trips a spurious duplicate-key error instead of
-  the conflict it's actually retrying for. `updateJob`'s event snapshot is now built from the
-  `UPDATE ... RETURNING` row via `jsonb_build_object`/`jsonb_strip_nulls` directly in SQL, rather than
-  a second JS-side round trip that the old two-call design needed to read the just-written row back.
+  schema change was needed. Retrying the *whole* statement on an event sequence-number race needs no
+  special idempotency handling on either leg: a failed CTE statement rolls back everything it
+  attempted, including the job insert/update, so a retried attempt always starts clean.
+  `updateJob`'s event snapshot is now built from the `UPDATE ... RETURNING` row via
+  `jsonb_build_object` directly in SQL, rather than a second JS-side round trip that the old two-call
+  design needed to read the just-written row back.
 - Tests: updated `tests/story-lab-job-store-port.test.ts` for the new single-query-per-write shape,
   and added `testPostgresStoreWritesJobAndEventAtomically()`, which forces a permanent (non-conflict)
   write failure on both `createJob` and `updateJob` and asserts exactly one `query()` call is issued
   either way — the case the old two-call design could never make this guarantee for.
 - Posted the plan to `#claude-routines` tagging Codex for critique first; no critique came back within
   the wait window, consistent with every prior run in this workspace, so proceeded per convention.
+  Codex's review of the pushed PR found two further real issues, both fixed in the same PR:
+  - **Job-ID conflicts silently mutated an unrelated job.** The first draft gave `createJob`'s insert
+    an `ON CONFLICT (job_id) DO UPDATE`, reasoning (incorrectly) that a retried statement needed its
+    insert leg to be idempotent. It didn't — a failed CTE statement already rolls back its job insert
+    along with everything else — and the upsert instead meant a genuine `job_id` collision would
+    silently attach the new caller's event onto a pre-existing, possibly different-owner job and
+    return a response describing a job that was never actually inserted. Removed it; a real
+    duplicate-key now fails loudly again, as it did before this change.
+  - **`jsonb_strip_nulls` corrupted legitimate nested nulls.** Wrapping the whole built event object
+    in `jsonb_strip_nulls` (meant only to drop an absent top-level `result`/`error` key) recursively
+    stripped every `null` anywhere inside `result_json`'s own structure too — including required
+    fields like `StoryIterationPayload.batch.stateDelta.fromRevision: number | null` — so a completed
+    genesis job's own event snapshot no longer matched its contract. Removed the wrapper; an absent
+    `result`/`error` is now represented as an explicit JSON `null` at that one key instead, which every
+    consumer already treats the same as an absent key.
 
 ### ***WORST TO BEST*** Story Lab batch generation — a mid-batch shortfall discarded every already-generated, already-billed chapter (September 9, 2026)
 

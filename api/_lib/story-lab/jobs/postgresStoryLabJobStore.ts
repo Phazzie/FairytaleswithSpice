@@ -89,12 +89,15 @@ const TERMINAL_JOB_STATUS_SQL_LIST = STORY_LAB_TERMINAL_JOB_STATUSES
  * does, and the caller's failure and the database's state can no longer
  * disagree.
  *
- * `ON CONFLICT (job_id) DO UPDATE` makes the job leg idempotent so retrying
- * the *whole* statement on an event sequence-number race (see
- * `writeJobAndEvent` below) never fails a re-run of `createJob`'s insert with
- * a duplicate-key error instead of the conflict it's actually retrying for.
- * `UPDATE_JOB_SQL`'s update needs no such treatment: setting the same
- * columns to the same values twice is already a no-op.
+ * Retrying the *whole* statement on an event sequence-number race (see
+ * `writeJobAndEvent` below) needs no special idempotency handling on either
+ * leg: a failed CTE statement is one failed Postgres statement, so a failed
+ * attempt's job insert/update is rolled back along with its event insert —
+ * nothing from it is left committed for the next attempt to collide with.
+ * `CREATE_JOB_SQL`'s insert is deliberately left to fail on a genuine
+ * duplicate `job_id` (not a retry of its own attempt), the same as before
+ * this change; an `ON CONFLICT` upsert there would silently attach a new
+ * caller's event onto a pre-existing, possibly different-owner job instead.
  */
 const CREATE_JOB_SQL = `
 with inserted as (
@@ -111,7 +114,6 @@ with inserted as (
     created_at,
     updated_at
   ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11)
-  on conflict (job_id) do update set updated_at = excluded.updated_at
   returning job_id, owner_user_id
 ),
 event_insert as (
@@ -149,7 +151,7 @@ event_insert as (
     u.job_id,
     u.owner_user_id,
     (select coalesce(max(sequence_number), 0) + 1 from story_lab_job_events where job_id = u.job_id),
-    jsonb_strip_nulls(jsonb_build_object(
+    jsonb_build_object(
       'eventId', $9::text,
       'type', 'snapshot',
       'emittedAt', $8::text,
@@ -164,7 +166,7 @@ event_insert as (
         'result', u.result_json,
         'error', u.error_json
       )
-    )),
+    ),
     $8
   from updated u
   returning job_id
@@ -323,9 +325,10 @@ class PostgresStoryLabJobStore implements StoryLabJobStore {
    * Runs one of the combined job-write + event-write CTE statements, retrying
    * the whole statement when the event leg's sequence-number subquery races
    * a concurrent write for the same job (see `isJobEventSequenceConflict`
-   * below). Retrying the *whole* statement is safe: `UPDATE_JOB_SQL`'s update
-   * is a no-op on repeat, and `CREATE_JOB_SQL`'s `ON CONFLICT (job_id) DO
-   * UPDATE` makes its insert leg the same.
+   * below). Retrying the *whole* statement is safe because a failed attempt
+   * commits nothing — the job insert/update in a failed CTE statement rolls
+   * back along with its event insert, so the next attempt starts clean
+   * rather than colliding with a partially-applied previous one.
    */
   private async writeJobAndEvent<T = unknown>(
     sql: string,

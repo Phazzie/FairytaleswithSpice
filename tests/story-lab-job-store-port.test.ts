@@ -64,8 +64,113 @@ async function main() {
   await testPostgresStoreCreatesUpdatesAndLoadsJobSnapshots();
   await testPostgresStoreRetriesEventSequenceConflicts();
   await testPostgresStoreWritesJobAndEventAtomically();
+  await testPostgresStoreRejectsGenuineJobIdConflictRatherThanUpsertingOverIt();
+  await testPostgresStoreUpdateEventDoesNotStripNestedNulls();
 
   console.log('Story Lab job store port tests passed');
+}
+
+/**
+ * Regression test for a Codex finding on this fix's first draft: `CREATE_JOB_SQL`
+ * originally gave its insert an `ON CONFLICT (job_id) DO UPDATE`, on the mistaken
+ * belief that retrying the whole atomic statement on an event sequence-number race
+ * needed the job leg to be idempotent. It didn't — a failed CTE statement rolls
+ * back its job insert along with everything else — and the upsert instead meant a
+ * genuine `job_id` collision would silently attach a new caller's event onto a
+ * pre-existing, possibly different-owner job and return a response describing a
+ * job that was never actually inserted. A duplicate `job_id` must fail loudly.
+ */
+async function testPostgresStoreRejectsGenuineJobIdConflictRatherThanUpsertingOverIt() {
+  const executor = new FakeJobExecutor();
+  const jobId = 'job_44444444-4444-4444-8444-444444444444';
+  const store = createPostgresStoryLabJobStore({
+    databaseUrl: 'postgres://story-lab.example/test',
+    executor,
+    now: () => '2026-06-08T12:30:00.000Z',
+    jobIdFactory: () => jobId,
+    eventIdFactory: () => 'event_conflict'
+  });
+
+  const duplicateKeyError = new Error('duplicate key value violates unique constraint "story_lab_jobs_pkey"') as Error & {
+    code?: string;
+    constraint?: string;
+  };
+  duplicateKeyError.code = '23505';
+  duplicateKeyError.constraint = 'story_lab_jobs_pkey';
+  executor.failNextWriteWithError = duplicateKeyError;
+
+  let createError: unknown;
+  try {
+    await store.createJob({ kind: 'genesis', ownerUserId: 'user_job_owner' });
+  } catch (error) {
+    createError = error;
+  }
+
+  assert(
+    isStoryLabJobStoreError(createError),
+    'a genuine job_id primary-key conflict must fail loudly, not be swallowed by an upsert'
+  );
+  assert(
+    executor.queries.length === 1,
+    'a job_id primary-key conflict is not an event sequence-number race, so it must not be retried'
+  );
+}
+
+/**
+ * Regression test for a second Codex finding: the first draft wrapped the whole
+ * built event object in `jsonb_strip_nulls`, meaning to drop only an absent
+ * top-level `result`/`error` key, but that recursively strips every `null`
+ * anywhere inside `result_json`'s own structure — including required fields like
+ * `StoryIterationPayload.batch.stateDelta.fromRevision: number | null` — so a
+ * completed job's own event snapshot no longer matched its contract. There is no
+ * real Postgres here to run the SQL's JSON construction against, so this asserts
+ * against the SQL text itself: `jsonb_strip_nulls` must not appear in the
+ * statement that builds `updateJob`'s event snapshot.
+ */
+async function testPostgresStoreUpdateEventDoesNotStripNestedNulls() {
+  const executor = new FakeJobExecutor();
+  const jobId = 'job_55555555-5555-4555-8555-555555555555';
+  const store = createPostgresStoryLabJobStore({
+    databaseUrl: 'postgres://story-lab.example/test',
+    executor,
+    now: () => '2026-06-08T12:30:00.000Z',
+    jobIdFactory: () => jobId,
+    eventIdFactory: () => 'event_nulls'
+  });
+
+  executor.enqueueRows([
+    {
+      job_id: jobId,
+      owner_user_id: 'user_job_owner',
+      kind: 'genesis',
+      status: 'completed',
+      current_step: 'completed',
+      progress_percent: 100,
+      created_at: '2026-06-08T12:30:00.000Z',
+      updated_at: '2026-06-08T12:31:00.000Z',
+      result_json: { storyId: 'story_owner_safe', stateDelta: { fromRevision: null } },
+      error_json: null
+    }
+  ]);
+  await store.updateJob(jobId, {
+    ownerUserId: 'user_job_owner',
+    status: 'completed',
+    currentStep: 'completed',
+    progressPercent: 100,
+    result: { storyId: 'story_owner_safe', stateDelta: { fromRevision: null } },
+    now: '2026-06-08T12:31:00.000Z'
+  });
+
+  const updateQuery = executor.queries.find(query => query.sql.toLowerCase().includes('update story_lab_jobs'));
+  assert(updateQuery, 'updateJob should issue its combined update+event statement');
+  assert(
+    !updateQuery.sql.toLowerCase().includes('jsonb_strip_nulls'),
+    'updateJob event construction must not recursively strip nulls, or legitimate nested nulls in result_json (e.g. stateDelta.fromRevision) would be silently dropped from the event'
+  );
+  assert(
+    updateQuery.sql.toLowerCase().includes('jsonb_build_object'),
+    'updateJob should still build the event snapshot from the updated row'
+  );
 }
 
 /**
