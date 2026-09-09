@@ -117,15 +117,21 @@ async function testPostgresStoreRejectsGenuineJobIdConflictRatherThanUpsertingOv
 }
 
 /**
- * Regression test for a second Codex finding: the first draft wrapped the whole
- * built event object in `jsonb_strip_nulls`, meaning to drop only an absent
- * top-level `result`/`error` key, but that recursively strips every `null`
- * anywhere inside `result_json`'s own structure — including required fields like
+ * Regression test for a second Codex finding, addressed in two rounds. Round 1:
+ * the first draft wrapped the whole built event object in `jsonb_strip_nulls`,
+ * meaning to drop only an absent top-level `result`/`error` key, but that
+ * recursively strips every `null` anywhere inside `result_json`'s own structure —
+ * including required fields like
  * `StoryIterationPayload.batch.stateDelta.fromRevision: number | null` — so a
- * completed job's own event snapshot no longer matched its contract. There is no
- * real Postgres here to run the SQL's JSON construction against, so this asserts
- * against the SQL text itself: `jsonb_strip_nulls` must not appear in the
- * statement that builds `updateJob`'s event snapshot.
+ * completed job's own event snapshot no longer matched its contract. Round 2:
+ * removing the wrapper outright made `result`/`error` unconditionally present as
+ * an explicit JSON `null` instead, which the create-path and in-memory event
+ * shapes never do (they omit the key entirely when absent) — a strict
+ * shared-contract client could reject the mismatch. The fix conditionally merges
+ * in each of `result`/`error` only when its column is not null, via `||` on two
+ * small `jsonb_build_object`s, leaving whatever is nested inside a *present*
+ * `result_json` untouched. There is no real Postgres here to run the SQL's JSON
+ * construction against, so this asserts against the SQL text itself.
  */
 async function testPostgresStoreUpdateEventDoesNotStripNestedNulls() {
   const executor = new FakeJobExecutor();
@@ -163,13 +169,15 @@ async function testPostgresStoreUpdateEventDoesNotStripNestedNulls() {
 
   const updateQuery = executor.queries.find(query => query.sql.toLowerCase().includes('update story_lab_jobs'));
   assert(updateQuery, 'updateJob should issue its combined update+event statement');
+  const sql = updateQuery.sql.toLowerCase();
   assert(
-    !updateQuery.sql.toLowerCase().includes('jsonb_strip_nulls'),
+    !sql.includes('jsonb_strip_nulls'),
     'updateJob event construction must not recursively strip nulls, or legitimate nested nulls in result_json (e.g. stateDelta.fromRevision) would be silently dropped from the event'
   );
+  assert(sql.includes('jsonb_build_object'), 'updateJob should still build the event snapshot from the updated row');
   assert(
-    updateQuery.sql.toLowerCase().includes('jsonb_build_object'),
-    'updateJob should still build the event snapshot from the updated row'
+    sql.includes('result_json is null') && sql.includes('error_json is null'),
+    'an absent result/error must be conditionally omitted from the built event, not unconditionally emitted as an explicit null, to match the create-path and in-memory event shapes'
   );
 }
 

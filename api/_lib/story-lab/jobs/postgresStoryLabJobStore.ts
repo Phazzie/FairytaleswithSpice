@@ -155,16 +155,18 @@ event_insert as (
       'eventId', $9::text,
       'type', 'snapshot',
       'emittedAt', $8::text,
-      'job', jsonb_build_object(
-        'jobId', u.job_id,
-        'kind', u.kind,
-        'status', u.status,
-        'currentStep', u.current_step,
-        'progressPercent', u.progress_percent,
-        'createdAt', u.created_at,
-        'updatedAt', u.updated_at,
-        'result', u.result_json,
-        'error', u.error_json
+      'job', (
+        jsonb_build_object(
+          'jobId', u.job_id,
+          'kind', u.kind,
+          'status', u.status,
+          'currentStep', u.current_step,
+          'progressPercent', u.progress_percent,
+          'createdAt', u.created_at,
+          'updatedAt', u.updated_at
+        )
+        || case when u.result_json is null then '{}'::jsonb else jsonb_build_object('result', u.result_json) end
+        || case when u.error_json is null then '{}'::jsonb else jsonb_build_object('error', u.error_json) end
       )
     ),
     $8

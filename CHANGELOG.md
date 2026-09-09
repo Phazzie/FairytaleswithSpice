@@ -49,9 +49,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     in `jsonb_strip_nulls` (meant only to drop an absent top-level `result`/`error` key) recursively
     stripped every `null` anywhere inside `result_json`'s own structure too — including required
     fields like `StoryIterationPayload.batch.stateDelta.fromRevision: number | null` — so a completed
-    genesis job's own event snapshot no longer matched its contract. Removed the wrapper; an absent
-    `result`/`error` is now represented as an explicit JSON `null` at that one key instead, which every
-    consumer already treats the same as an absent key.
+    genesis job's own event snapshot no longer matched its contract. Removed the wrapper.
+  Re-review of that fix found a follow-on issue with the first response (an absent `result`/`error`
+  was now unconditionally emitted as an explicit JSON `null`, unlike the create-path and in-memory
+  event shapes, which omit the key entirely) and a scope question, both addressed:
+  - **Absent `result`/`error` now conditionally omitted.** Replaced the unconditional
+    `jsonb_build_object('result', ..., 'error', ...)` with a `||` merge of two small
+    `jsonb_build_object`s, each included only when its column is not null — an absent `result`/`error`
+    key is omitted again, matching every other event shape, while whatever is nested inside a
+    *present* `result_json` is passed through untouched (no re-introduced recursive stripping).
+  - **Live-Postgres integration coverage requested, not added in this PR.** Codex asked for a test that
+    executes the actual CTE against real PostgreSQL rather than a fake in-process executor. This
+    repository has no existing live-database test harness anywhere (no `testcontainers`/embedded
+    Postgres dependency, no DB service in CI); adding one is a real infrastructure decision — a new
+    CI service and dependency — not a local fix to this bug, so it's out of scope for this PR. The
+    atomicity guarantee itself rests on standard, well-documented single-statement Postgres semantics
+    (a CTE statement that errors commits nothing), not on anything specific to this codebase that only
+    a live integration test could catch; the existing fake-executor tests verify the one thing that
+    *is* this codebase's responsibility — that a failure surfaces after exactly one write call, never
+    a second one that could partially apply.
+  - Updated `STORY_LAB_LIVING_BOOK_AND_DURABLE_JOBS_EXEC_PLAN.md`'s current-state findings to mark the
+    two-separate-writes gap it had recorded as closed by this PR, without claiming the broader
+    transactional-outbox/idempotency/dispatcher work that plan's Phase B still scopes.
 
 ### ***WORST TO BEST*** Story Lab batch generation — a mid-batch shortfall discarded every already-generated, already-billed chapter (September 9, 2026)
 
