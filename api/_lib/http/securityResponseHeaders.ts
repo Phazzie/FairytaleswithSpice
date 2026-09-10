@@ -62,17 +62,20 @@ export interface SecurityResponseHeader {
  * reason `AudioService` ships every narration as an inline `data:` WAV rather
  * than a stored file.
  */
+/** CSP's same-origin source keyword, factored out rather than repeated across nine directives below. */
+const SELF = "'self'";
+
 const CONTENT_SECURITY_POLICY = [
-  "default-src 'self'",
-  "script-src 'self'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' https: data:",
-  "font-src 'self'",
-  "media-src 'self' data:",
-  "connect-src 'self'",
+  `default-src ${SELF}`,
+  `script-src ${SELF}`,
+  `style-src ${SELF} 'unsafe-inline'`,
+  `img-src ${SELF} https: data:`,
+  `font-src ${SELF}`,
+  `media-src ${SELF} data:`,
+  `connect-src ${SELF}`,
   "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
+  `base-uri ${SELF}`,
+  `form-action ${SELF}`,
   "frame-ancestors 'none'"
 ].join('; ');
 
