@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ***WORST TO BEST*** Proving Grounds / debug panel — no access control at all on a route that triggers billed AI generation (September 10, 2026)
+
+- `/proving-grounds` (`app.routes.ts`) had no `canActivate` guard whatsoever, and no
+  `CanActivate`/`isDevMode` check existed anywhere in `story-generator/src/app`. The only
+  thing that looked like a gate was `showDebugPanel = queryParamMap.get('debug') === '1'`
+  in `app.ts` — a signal that only ever toggled whether the nav link rendered and whether
+  `<app-debug-panel>` was `@defer`-loaded in the main shell. It never touched the route
+  itself, which needed no query param at all.
+- Both surfaces trigger real, presumably-billed AI generation: `debug-panel.ts`'s
+  `triggerSampleGenesis()` and `proving-grounds.ts`'s `generateStory()` both call
+  `storyService.beginStory()`. Per `APP_FEATURE_STATUS_MATRIX.md`, Proving Grounds is
+  "present, not shipping-critical" — an internal prompt-testing workspace, not a customer
+  feature — yet it was one URL away from any visitor, in every build, with zero test
+  coverage on route access.
+- Added `provingGroundsDevOnlyGuard`, a `CanActivateFn` on the `/proving-grounds` route,
+  and a shared `PROVING_GROUNDS_DEV_MODE_CHECK` injection token that both the guard and
+  `app.ts`'s nav link/`@defer` gate now read from — one real gate instead of one fake one.
+  The token defaults to a hardcoded `false` (fail closed) everywhere it isn't explicitly
+  provided; `app.config.ts` is the one place that wires in the real `isDevMode()`, so an
+  injector that forgets to wire it can only under-expose, never over-expose, the route.
+- Removed the now-dead `?debug=1` query-param plumbing (`ActivatedRoute`, `toSignal`,
+  the `queryParamMap` pipe) from `app.ts`.
+- Tests: `proving-grounds-access.guard.spec.ts` (redirect when dev mode is off/unwired,
+  allow when on), `app.routes.spec.ts` (the guard is actually wired onto the route),
+  `app.config.spec.ts` (the real `isDevMode` is wired into the token), and updated
+  `app.spec.ts` cases for the nav link/debug panel/error display visibility now driven by
+  the injected check instead of a query param.
+
 ### ***WORST TO BEST*** Story Lab transient story cache — no per-owner access control, reachable through an authenticated route (September 10, 2026)
 
 This one is a broken-access-control fix, not the dead-code/memory-bound class this

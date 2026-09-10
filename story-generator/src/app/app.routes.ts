@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 import { App } from './app';
+import { provingGroundsDevOnlyGuard } from './proving-grounds-access.guard';
 
 export const routes: Routes = [
   {
@@ -11,7 +12,8 @@ export const routes: Routes = [
   {
     path: 'proving-grounds',
     loadComponent: () => import('./proving-grounds/proving-grounds').then((module) => module.ProvingGroundsComponent),
-    title: 'Fairytales with Spice - Proving Grounds'
+    title: 'Fairytales with Spice - Proving Grounds',
+    canActivate: [provingGroundsDevOnlyGuard]
   },
   {
     path: '**',

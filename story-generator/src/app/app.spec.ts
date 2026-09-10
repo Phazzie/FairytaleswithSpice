@@ -1,9 +1,10 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, DeferBlockState, fakeAsync, TestBed, tick } from '@angular/core/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { ActivatedRoute, convertToParamMap, ParamMap } from '@angular/router';
+import { provideRouter } from '@angular/router';
 import { BehaviorSubject, NEVER, of, Subject, throwError } from 'rxjs';
 import { App } from './app';
+import { PROVING_GROUNDS_DEV_MODE_CHECK } from './proving-grounds-access.guard';
 import { StoryService } from './story.service';
 import { AuthService, CLERK_CLIENT_FACTORY, ClerkClient } from './auth.service';
 import { CloudLibraryService } from './cloud-library.service';
@@ -300,66 +301,76 @@ const confirmedHeatContract = {
   noGoContent: 'No coercion.'
 };
 
+// Shared by the main `describe('App', ...)` `beforeEach` below and by any
+// test in that suite that needs a second, freshly-configured `App` instance
+// (e.g. to flip a provider only `TestBed.resetTestingModule()` can change
+// mid-test) — one spy factory instead of two copies drifting apart.
+function createDefaultAppServiceSpies(): {
+  storyServiceSpy: jasmine.SpyObj<StoryService>;
+  errorLoggingSpy: jasmine.SpyObj<ErrorLoggingService>;
+} {
+  const storyServiceSpy = jasmine.createSpyObj<StoryService>('StoryService', [
+    'beginStory',
+    'continueStory',
+    'createStoryLabJob',
+    'streamStoryLabJobEvents',
+    'getStoryLabAuthConfig',
+    'listCloudStoryProjects',
+    'saveCloudStoryProject',
+    'loadCloudStoryProject',
+    'deleteCloudStoryProject',
+    'generateImage',
+    'convertChapterToAudio',
+    'exportStory',
+    'getStoryLabProfile',
+    'updateStoryLabProfile'
+  ]);
+  // A quiet default for the constructor effect that forwards
+  // `isSignedIn()`/`accountId()` into `syncStoryLabProfileDefaultsWithAuthState`
+  // — most tests here never sign in, but the ones that do (or that call the
+  // method directly) should not silently seed the blueprint with a
+  // fabricated profile unless a test opts into that explicitly.
+  storyServiceSpy.getStoryLabProfile.and.returnValue(of({
+    success: false,
+    error: { code: 'NOT_FOUND', message: 'no profile in this test' }
+  }));
+  // Every test here constructs `App`, and `App`'s constructor now calls
+  // `AuthService.initialize()` unconditionally — this is what that resolves
+  // to unless a test overrides it, matching every real deployment that has
+  // not configured Clerk.
+  storyServiceSpy.getStoryLabAuthConfig.and.returnValue(of({ success: true, data: { provider: 'none' } }));
+  // A quiet default for any test that stubs a `running` job creation
+  // response without caring about the job-watching path itself — an
+  // observable that never emits keeps `watchJobUntilTerminal` harmlessly
+  // idle rather than throwing on `undefined.subscribe`. Tests below that do
+  // care override this per case.
+  storyServiceSpy.streamStoryLabJobEvents.and.returnValue(NEVER);
+  const errorLoggingSpy = jasmine.createSpyObj<ErrorLoggingService>('ErrorLoggingService', [
+    'logInfo',
+    'logError',
+    'getErrors'
+  ]);
+  errorLoggingSpy.getErrors.and.returnValue(of([]));
+
+  return { storyServiceSpy, errorLoggingSpy };
+}
+
 describe('App', () => {
   let fixture: ComponentFixture<App>;
   let component: App;
   let storyService: jasmine.SpyObj<StoryService>;
-  let queryParamMap$: BehaviorSubject<ParamMap>;
 
   beforeEach(async () => {
-    queryParamMap$ = new BehaviorSubject<ParamMap>(convertToParamMap({}));
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(SKIN_STORAGE_KEY);
 
-    const storyServiceSpy = jasmine.createSpyObj<StoryService>('StoryService', [
-      'beginStory',
-      'continueStory',
-      'createStoryLabJob',
-      'streamStoryLabJobEvents',
-      'getStoryLabAuthConfig',
-      'listCloudStoryProjects',
-      'saveCloudStoryProject',
-      'loadCloudStoryProject',
-      'deleteCloudStoryProject',
-      'generateImage',
-      'convertChapterToAudio',
-      'exportStory',
-      'getStoryLabProfile',
-      'updateStoryLabProfile'
-    ]);
-    // A quiet default for the constructor effect that forwards
-    // `isSignedIn()`/`accountId()` into `syncStoryLabProfileDefaultsWithAuthState`
-    // — most tests here never sign in, but the ones that do (or that call the
-    // method directly) should not silently seed the blueprint with a
-    // fabricated profile unless a test opts into that explicitly.
-    storyServiceSpy.getStoryLabProfile.and.returnValue(of({
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'no profile in this test' }
-    }));
-    // Every test here constructs `App`, and `App`'s constructor now calls
-    // `AuthService.initialize()` unconditionally — this is what that resolves
-    // to unless a test overrides it, matching every real deployment that has
-    // not configured Clerk.
-    storyServiceSpy.getStoryLabAuthConfig.and.returnValue(of({ success: true, data: { provider: 'none' } }));
-    // A quiet default for any test that stubs a `running` job creation
-    // response without caring about the job-watching path itself — an
-    // observable that never emits keeps `watchJobUntilTerminal` harmlessly
-    // idle rather than throwing on `undefined.subscribe`. Tests below that do
-    // care override this per case.
-    storyServiceSpy.streamStoryLabJobEvents.and.returnValue(NEVER);
-    const errorLoggingSpy = jasmine.createSpyObj<ErrorLoggingService>('ErrorLoggingService', [
-      'logInfo',
-      'logError',
-      'getErrors'
-    ]);
-    errorLoggingSpy.getErrors.and.returnValue(of([]));
+    const { storyServiceSpy, errorLoggingSpy } = createDefaultAppServiceSpies();
 
     await TestBed.configureTestingModule({
       imports: [App, HttpClientTestingModule],
       providers: [
         { provide: StoryService, useValue: storyServiceSpy },
-        { provide: ErrorLoggingService, useValue: errorLoggingSpy },
-        { provide: ActivatedRoute, useValue: { queryParamMap: queryParamMap$.asObservable() } }
+        { provide: ErrorLoggingService, useValue: errorLoggingSpy }
       ]
     }).compileComponents();
 
@@ -547,26 +558,52 @@ describe('App', () => {
     expect(component.workbench().chapterHistory.length).toBe(0);
   });
 
-  it('hides the debug panel unless debug mode is requested', () => {
+  // Creates a fresh `App` off a TestBed reconfigured with Proving Grounds
+  // dev mode forced on — `PROVING_GROUNDS_DEV_MODE_CHECK` defaults to `false`
+  // (see its doc comment), matching every other test in this suite, so the
+  // "on" case needs its own component instance rather than flipping a signal
+  // after construction.
+  async function createAppWithProvingGroundsDevModeOn(): Promise<ComponentFixture<App>> {
+    const { storyServiceSpy, errorLoggingSpy } = createDefaultAppServiceSpies();
+
+    TestBed.resetTestingModule();
+    await TestBed.configureTestingModule({
+      imports: [App, HttpClientTestingModule],
+      providers: [
+        { provide: StoryService, useValue: storyServiceSpy },
+        { provide: ErrorLoggingService, useValue: errorLoggingSpy },
+        { provide: PROVING_GROUNDS_DEV_MODE_CHECK, useValue: () => true },
+        provideRouter([])
+      ]
+    }).compileComponents();
+
+    return TestBed.createComponent(App);
+  }
+
+  it('hides the debug panel and Proving Grounds nav link unless dev mode is on', () => {
     expect(component.showDebugPanel()).toBeFalse();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('a[routerLink="/proving-grounds"]')).toBeNull();
   });
 
-  it('enables the debug panel with the debug query parameter', () => {
-    queryParamMap$.next(convertToParamMap({ debug: '1' }));
-    expect(component.showDebugPanel()).toBeTrue();
+  it('enables the debug panel and Proving Grounds nav link when dev mode is on', async () => {
+    const devFixture = await createAppWithProvingGroundsDevModeOn();
+    expect(devFixture.componentInstance.showDebugPanel()).toBeTrue();
+    devFixture.detectChanges();
+    expect(devFixture.nativeElement.querySelector('a[routerLink="/proving-grounds"]')).not.toBeNull();
   });
 
-  it('hides the error display panel unless debug mode is requested', () => {
+  it('hides the error display panel unless dev mode is on', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('[data-testid="story-lab-error-display"]')).toBeNull();
   });
 
-  it('mounts the error display panel with the debug query parameter', async () => {
-    queryParamMap$.next(convertToParamMap({ debug: '1' }));
-    fixture.detectChanges();
-    const [deferBlock] = await fixture.getDeferBlocks();
+  it('mounts the error display panel when dev mode is on', async () => {
+    const devFixture = await createAppWithProvingGroundsDevModeOn();
+    devFixture.detectChanges();
+    const [deferBlock] = await devFixture.getDeferBlocks();
     await deferBlock.render(DeferBlockState.Complete);
-    expect(fixture.nativeElement.querySelector('[data-testid="story-lab-error-display"]')).not.toBeNull();
+    expect(devFixture.nativeElement.querySelector('[data-testid="story-lab-error-display"]')).not.toBeNull();
   });
 
   // Before this, the creature/spice/heat-contract-detail/mood/length/batch
@@ -3644,8 +3681,7 @@ describe('App sign-in-time profile-defaults staleness', () => {
       imports: [App, HttpClientTestingModule],
       providers: [
         { provide: StoryService, useValue: storyService },
-        { provide: AuthService, useValue: fakeAuthService },
-        { provide: ActivatedRoute, useValue: { queryParamMap: of(convertToParamMap({})) } }
+        { provide: AuthService, useValue: fakeAuthService }
       ]
     }).compileComponents();
 
@@ -3787,7 +3823,6 @@ describe('App cloud account sign-in wiring', () => {
       providers: [
         { provide: StoryService, useValue: storyServiceSpy },
         { provide: ErrorLoggingService, useValue: errorLoggingSpy },
-        { provide: ActivatedRoute, useValue: { queryParamMap: new BehaviorSubject<ParamMap>(convertToParamMap({})) } },
         { provide: CLERK_CLIENT_FACTORY, useValue: clientFactory }
       ]
     }).compileComponents();
