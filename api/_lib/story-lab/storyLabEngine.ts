@@ -62,6 +62,15 @@ interface StoryLabEngineOptions {
    * also called from tests and from job execution, which have no route id.
    */
   requestId?: string;
+  /**
+   * The asking caller's own id, resolved by the route via
+   * `resolveCallerOwnerUserId` — threaded through so the transient snapshot
+   * read/write in `stateStore.ts` can be scoped to the caller who wrote it
+   * rather than answering to any caller who names the same `storyId`. See
+   * `getTransientStorySnapshot`. Optional for the same reason `requestId` is:
+   * tests and non-route callers have no caller to resolve one for.
+   */
+  callerOwnerUserId?: string;
 }
 
 const MOCK_FLAG_VALUES = new Set(['1', 'true', 'yes']);
@@ -277,7 +286,7 @@ export async function generateStoryLabGenesis(
   }
 
   if (shouldUseMockStoryLab()) {
-    return withMockTelemetry(buildGenesisResponse(input));
+    return withMockTelemetry(buildGenesisResponse(input, options.callerOwnerUserId));
   }
 
   const service = options.serviceFactory?.() ?? new StoryService();
@@ -302,7 +311,7 @@ export async function generateStoryLabGenesis(
     options.requestId,
     null
   );
-  payload.persistence = persistStoryIteration(payload);
+  payload.persistence = persistStoryIteration(payload, [], options.callerOwnerUserId);
 
   return {
     success: true,
@@ -341,7 +350,7 @@ export async function continueStoryLab(
     return missingProviderResponse();
   }
 
-  const transientSnapshot = getTransientStorySnapshot(input.storyId);
+  const transientSnapshot = getTransientStorySnapshot(input.storyId, options.callerOwnerUserId);
   const previousChapters = input.previouslyGeneratedChapters.length
     ? input.previouslyGeneratedChapters
     : transientSnapshot?.chapters ?? [];
@@ -354,7 +363,7 @@ export async function continueStoryLab(
       storyState: storyState ?? input.storyState,
       previouslyGeneratedChapters: previousChapters,
       existingSummary
-    }));
+    }, options.callerOwnerUserId));
   }
 
   if (!storyState || previousChapters.length === 0) {
@@ -442,7 +451,7 @@ export async function continueStoryLab(
     options.requestId,
     storyState
   );
-  payload.persistence = persistStoryIteration(payload, previousChapters);
+  payload.persistence = persistStoryIteration(payload, previousChapters, options.callerOwnerUserId);
 
   return {
     success: true,

@@ -52,6 +52,28 @@ export async function loadAuthenticatedContentBoundaries(
 }
 
 /**
+ * The asking caller's own id, for scoping a read against `stateStore.ts`'s
+ * transient snapshot cache to the caller who wrote it — see
+ * `getTransientStorySnapshot`.
+ *
+ * A soft lookup, the same shape as `loadAuthenticatedContentBoundaries`
+ * above and for the same reason: this never gates a request on being
+ * signed in, so a caller with no session, or an identity provider that
+ * fails to answer, is simply treated as anonymous rather than refused.
+ */
+export async function resolveCallerOwnerUserId(
+  authPort: AuthPort,
+  req: AuthRequestLike
+): Promise<string | undefined> {
+  try {
+    const user = await authPort.getCurrentUser(req);
+    return user?.userId;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Folds a profile's content boundaries into an already-accepted Heat Contract.
  *
  * Never called on an absent contract, and never changes `adultOnlyConfirmed`
