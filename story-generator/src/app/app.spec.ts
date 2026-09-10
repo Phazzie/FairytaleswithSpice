@@ -301,6 +301,60 @@ const confirmedHeatContract = {
   noGoContent: 'No coercion.'
 };
 
+// Shared by the main `describe('App', ...)` `beforeEach` below and by any
+// test in that suite that needs a second, freshly-configured `App` instance
+// (e.g. to flip a provider only `TestBed.resetTestingModule()` can change
+// mid-test) — one spy factory instead of two copies drifting apart.
+function createDefaultAppServiceSpies(): {
+  storyServiceSpy: jasmine.SpyObj<StoryService>;
+  errorLoggingSpy: jasmine.SpyObj<ErrorLoggingService>;
+} {
+  const storyServiceSpy = jasmine.createSpyObj<StoryService>('StoryService', [
+    'beginStory',
+    'continueStory',
+    'createStoryLabJob',
+    'streamStoryLabJobEvents',
+    'getStoryLabAuthConfig',
+    'listCloudStoryProjects',
+    'saveCloudStoryProject',
+    'loadCloudStoryProject',
+    'deleteCloudStoryProject',
+    'generateImage',
+    'convertChapterToAudio',
+    'exportStory',
+    'getStoryLabProfile',
+    'updateStoryLabProfile'
+  ]);
+  // A quiet default for the constructor effect that forwards
+  // `isSignedIn()`/`accountId()` into `syncStoryLabProfileDefaultsWithAuthState`
+  // — most tests here never sign in, but the ones that do (or that call the
+  // method directly) should not silently seed the blueprint with a
+  // fabricated profile unless a test opts into that explicitly.
+  storyServiceSpy.getStoryLabProfile.and.returnValue(of({
+    success: false,
+    error: { code: 'NOT_FOUND', message: 'no profile in this test' }
+  }));
+  // Every test here constructs `App`, and `App`'s constructor now calls
+  // `AuthService.initialize()` unconditionally — this is what that resolves
+  // to unless a test overrides it, matching every real deployment that has
+  // not configured Clerk.
+  storyServiceSpy.getStoryLabAuthConfig.and.returnValue(of({ success: true, data: { provider: 'none' } }));
+  // A quiet default for any test that stubs a `running` job creation
+  // response without caring about the job-watching path itself — an
+  // observable that never emits keeps `watchJobUntilTerminal` harmlessly
+  // idle rather than throwing on `undefined.subscribe`. Tests below that do
+  // care override this per case.
+  storyServiceSpy.streamStoryLabJobEvents.and.returnValue(NEVER);
+  const errorLoggingSpy = jasmine.createSpyObj<ErrorLoggingService>('ErrorLoggingService', [
+    'logInfo',
+    'logError',
+    'getErrors'
+  ]);
+  errorLoggingSpy.getErrors.and.returnValue(of([]));
+
+  return { storyServiceSpy, errorLoggingSpy };
+}
+
 describe('App', () => {
   let fixture: ComponentFixture<App>;
   let component: App;
@@ -310,48 +364,7 @@ describe('App', () => {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(SKIN_STORAGE_KEY);
 
-    const storyServiceSpy = jasmine.createSpyObj<StoryService>('StoryService', [
-      'beginStory',
-      'continueStory',
-      'createStoryLabJob',
-      'streamStoryLabJobEvents',
-      'getStoryLabAuthConfig',
-      'listCloudStoryProjects',
-      'saveCloudStoryProject',
-      'loadCloudStoryProject',
-      'deleteCloudStoryProject',
-      'generateImage',
-      'convertChapterToAudio',
-      'exportStory',
-      'getStoryLabProfile',
-      'updateStoryLabProfile'
-    ]);
-    // A quiet default for the constructor effect that forwards
-    // `isSignedIn()`/`accountId()` into `syncStoryLabProfileDefaultsWithAuthState`
-    // — most tests here never sign in, but the ones that do (or that call the
-    // method directly) should not silently seed the blueprint with a
-    // fabricated profile unless a test opts into that explicitly.
-    storyServiceSpy.getStoryLabProfile.and.returnValue(of({
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'no profile in this test' }
-    }));
-    // Every test here constructs `App`, and `App`'s constructor now calls
-    // `AuthService.initialize()` unconditionally — this is what that resolves
-    // to unless a test overrides it, matching every real deployment that has
-    // not configured Clerk.
-    storyServiceSpy.getStoryLabAuthConfig.and.returnValue(of({ success: true, data: { provider: 'none' } }));
-    // A quiet default for any test that stubs a `running` job creation
-    // response without caring about the job-watching path itself — an
-    // observable that never emits keeps `watchJobUntilTerminal` harmlessly
-    // idle rather than throwing on `undefined.subscribe`. Tests below that do
-    // care override this per case.
-    storyServiceSpy.streamStoryLabJobEvents.and.returnValue(NEVER);
-    const errorLoggingSpy = jasmine.createSpyObj<ErrorLoggingService>('ErrorLoggingService', [
-      'logInfo',
-      'logError',
-      'getErrors'
-    ]);
-    errorLoggingSpy.getErrors.and.returnValue(of([]));
+    const { storyServiceSpy, errorLoggingSpy } = createDefaultAppServiceSpies();
 
     await TestBed.configureTestingModule({
       imports: [App, HttpClientTestingModule],
@@ -551,34 +564,7 @@ describe('App', () => {
   // "on" case needs its own component instance rather than flipping a signal
   // after construction.
   async function createAppWithProvingGroundsDevModeOn(): Promise<ComponentFixture<App>> {
-    const storyServiceSpy = jasmine.createSpyObj<StoryService>('StoryService', [
-      'beginStory',
-      'continueStory',
-      'createStoryLabJob',
-      'streamStoryLabJobEvents',
-      'getStoryLabAuthConfig',
-      'listCloudStoryProjects',
-      'saveCloudStoryProject',
-      'loadCloudStoryProject',
-      'deleteCloudStoryProject',
-      'generateImage',
-      'convertChapterToAudio',
-      'exportStory',
-      'getStoryLabProfile',
-      'updateStoryLabProfile'
-    ]);
-    storyServiceSpy.getStoryLabProfile.and.returnValue(of({
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'no profile in this test' }
-    }));
-    storyServiceSpy.getStoryLabAuthConfig.and.returnValue(of({ success: true, data: { provider: 'none' } }));
-    storyServiceSpy.streamStoryLabJobEvents.and.returnValue(NEVER);
-    const errorLoggingSpy = jasmine.createSpyObj<ErrorLoggingService>('ErrorLoggingService', [
-      'logInfo',
-      'logError',
-      'getErrors'
-    ]);
-    errorLoggingSpy.getErrors.and.returnValue(of([]));
+    const { storyServiceSpy, errorLoggingSpy } = createDefaultAppServiceSpies();
 
     TestBed.resetTestingModule();
     await TestBed.configureTestingModule({
