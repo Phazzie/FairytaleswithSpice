@@ -1,10 +1,9 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnDestroy, SecurityContext, computed, effect, inject, signal } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer } from '@angular/platform-browser';
-import { ActivatedRoute, RouterLink } from '@angular/router';
-import { Subscription, map, timer } from 'rxjs';
+import { RouterLink } from '@angular/router';
+import { Subscription, timer } from 'rxjs';
 import {
   createBrowserHtmlDownloadHost,
   dataUriToBlob,
@@ -24,6 +23,7 @@ import { buildStoryHtmlDocument } from './story-html-exporter';
 import { describeBatchCompletionNotice, describePartialBatchFailures, isValidPartialFailures } from './batch-progress';
 import { BlueprintValidationField, FormValidationService } from './form-validation.service';
 import { AcceptedMemoryCardEditDraft, MemoryCardDraftItem, MemoryCardService } from './memory-card.service';
+import { PROVING_GROUNDS_DEV_MODE_CHECK } from './proving-grounds/proving-grounds-access.guard';
 import {
   ChoiceOption,
   CreatureOption,
@@ -437,7 +437,7 @@ export class App implements OnDestroy {
   private readonly workspaceStorage = inject(StoryWorkspaceStorageService);
   private readonly memoryCardService = inject(MemoryCardService);
   private readonly sanitizer = inject(DomSanitizer);
-  private readonly route = inject(ActivatedRoute);
+  private readonly isProvingGroundsDevMode = inject(PROVING_GROUNDS_DEV_MODE_CHECK);
   private batchIdSequence = 0;
   private readonly skinStorageKey = 'fairytales_story_lab_skin_v1';
   private progressTimer: ReturnType<typeof setInterval> | null = null;
@@ -671,10 +671,10 @@ export class App implements OnDestroy {
     elapsedSeconds: 0
   });
   readonly jobStatusPanel = signal<JobStatusPanelState>(this.createHiddenJobStatusPanel());
-  readonly showDebugPanel = toSignal(
-    this.route.queryParamMap.pipe(map(params => params.get('debug') === '1')),
-    { initialValue: false }
-  );
+  // Shares the exact gate `/proving-grounds` itself enforces (see
+  // `provingGroundsDevOnlyGuard`) so the nav link, the debug panel, and the
+  // route it links to can never disagree about whether they're reachable.
+  readonly showDebugPanel = signal(this.isProvingGroundsDevMode());
   readonly validationErrors = computed(() => this.formValidation.validateBlueprint(this.blueprint()));
   readonly isBlueprintValid = computed(() => this.formValidation.isValid(this.validationErrors()));
   readonly firstValidationError = computed(() => this.formValidation.getFirstError(this.validationErrors()));
