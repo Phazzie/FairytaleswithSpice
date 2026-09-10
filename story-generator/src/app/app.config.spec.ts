@@ -1,6 +1,6 @@
 import { InjectionToken, isDevMode } from '@angular/core';
 import { appConfig } from './app.config';
-import { PROVING_GROUNDS_DEV_MODE_CHECK } from './proving-grounds/proving-grounds-access.guard';
+import { PROVING_GROUNDS_DEV_MODE_CHECK } from './proving-grounds-access.guard';
 
 describe('appConfig', () => {
   // `PROVING_GROUNDS_DEV_MODE_CHECK` defaults to a hardcoded `false` (fail

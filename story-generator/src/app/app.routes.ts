@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
 import { App } from './app';
-import { provingGroundsDevOnlyGuard } from './proving-grounds/proving-grounds-access.guard';
+import { provingGroundsDevOnlyGuard } from './proving-grounds-access.guard';
 
 export const routes: Routes = [
   {

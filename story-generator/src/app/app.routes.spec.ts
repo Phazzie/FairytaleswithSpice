@@ -1,5 +1,5 @@
 import { routes } from './app.routes';
-import { provingGroundsDevOnlyGuard } from './proving-grounds/proving-grounds-access.guard';
+import { provingGroundsDevOnlyGuard } from './proving-grounds-access.guard';
 
 describe('routes', () => {
   it('gates the proving-grounds route behind provingGroundsDevOnlyGuard', () => {

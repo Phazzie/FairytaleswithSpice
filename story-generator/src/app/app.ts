@@ -23,7 +23,7 @@ import { buildStoryHtmlDocument } from './story-html-exporter';
 import { describeBatchCompletionNotice, describePartialBatchFailures, isValidPartialFailures } from './batch-progress';
 import { BlueprintValidationField, FormValidationService } from './form-validation.service';
 import { AcceptedMemoryCardEditDraft, MemoryCardDraftItem, MemoryCardService } from './memory-card.service';
-import { PROVING_GROUNDS_DEV_MODE_CHECK } from './proving-grounds/proving-grounds-access.guard';
+import { PROVING_GROUNDS_DEV_MODE_CHECK } from './proving-grounds-access.guard';
 import {
   ChoiceOption,
   CreatureOption,

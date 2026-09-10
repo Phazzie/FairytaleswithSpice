@@ -4,7 +4,7 @@ import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
 import { BehaviorSubject, NEVER, of, Subject, throwError } from 'rxjs';
 import { App } from './app';
-import { PROVING_GROUNDS_DEV_MODE_CHECK } from './proving-grounds/proving-grounds-access.guard';
+import { PROVING_GROUNDS_DEV_MODE_CHECK } from './proving-grounds-access.guard';
 import { StoryService } from './story.service';
 import { AuthService, CLERK_CLIENT_FACTORY, ClerkClient } from './auth.service';
 import { CloudLibraryService } from './cloud-library.service';
