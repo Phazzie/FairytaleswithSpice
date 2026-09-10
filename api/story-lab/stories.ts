@@ -12,7 +12,7 @@ import type { AuthPort } from '../_lib/story-lab/auth/authPort';
 import { configuredAuthPort } from '../_lib/story-lab/auth/configuredAuthPort';
 import type { StoryLabProfileStore } from '../_lib/story-lab/profile/storyLabProfileStore';
 import { createStoryLabCloudStorage } from '../_lib/story-lab/storage/storyLabCloudStorageConfig';
-import { loadAuthenticatedContentBoundaries, withMergedContentBoundaries } from '../_lib/story-lab/contentBoundaries';
+import { loadAuthenticatedContentBoundaries, resolveCallerOwnerUserId, withMergedContentBoundaries } from '../_lib/story-lab/contentBoundaries';
 import { withUnhandledRouteFailureLogging } from '../_lib/http/withUnhandledRouteFailureLogging';
 
 type GenerateStoryLabGenesis = typeof generateStoryLabGenesis;
@@ -126,12 +126,16 @@ export function createStoryLabGenesisHandler(
         ? { ...blueprint, heatContract: withMergedContentBoundaries(blueprint.heatContract, contentBoundaries) }
         : blueprint;
 
+      // Scopes the transient snapshot this genesis writes (`stateStore.ts`) to
+      // whichever caller actually asked for it — see `getTransientStorySnapshot`.
+      const callerOwnerUserId = await resolveCallerOwnerUserId(authPort, req);
+
       // The correlation id goes with the request. It is what this handler's own
       // lines are stamped with and what the caller was echoed as `X-Request-ID`;
       // passing it on is what makes the generation's own log lines — the prompt
       // sizes, the provider call, the failure a reader would be asking about —
       // answer to the same id, instead of to a second one minted in the service.
-      const payload: ApiResponse<StoryIterationPayload> = await generateGenesis(genesisInput, { requestId });
+      const payload: ApiResponse<StoryIterationPayload> = await generateGenesis(genesisInput, { requestId, callerOwnerUserId });
 
       logInfo(`Story Lab genesis ${payload.success ? 'succeeded' : 'failed'}`, {
         requestId,

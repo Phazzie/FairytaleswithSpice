@@ -26,6 +26,7 @@ import {
 import { createSavedStoryProjectFixture } from './story-lab-test-fixtures';
 import { resetRateLimitsForTests } from '../api/_lib/middleware/security';
 import { NonDurableStoryLabJobStore, nonDurableStoryLabJobStore } from '../api/_lib/story-lab/jobs/jobStore';
+import { persistStoryIteration, resetTransientStorySnapshots } from '../api/_lib/story-lab/stateStore';
 import { StoryLabJobStoreError } from '../api/_lib/story-lab/jobs/postgresStoryLabJobStore';
 import type { CreateStoryLabJobInput, StoryLabJobStore, UpdateStoryLabJobInput } from '../api/_lib/story-lab/jobs/jobStorePort';
 import type { StoryLabJobStoreConfig } from '../api/_lib/story-lab/jobs/storyLabJobStoreConfig';
@@ -826,6 +827,105 @@ async function testContinuationJobProceedsWithNoHeatContractAndNoStoredBoundarie
   assert(capturedInput!.heatContract === undefined, 'no heat contract should be manufactured when there was nothing to fold in');
 }
 
+/**
+ * Seeds `stateStore.ts`'s transient snapshot cache the way a completed
+ * genesis would, owned by `ownerUserId` — reusing the same fully-shaped
+ * story-state fixture the continuation job request builder does, since
+ * `buildContinuationResponse`'s mock path reads fields (`narrativeVoice`,
+ * etc.) a minimal ad hoc payload does not carry.
+ */
+function seedOwnedTransientSnapshot(storyId: string, ownerUserId: string): void {
+  const fixture = createSavedStoryProjectFixture({ storyId });
+  persistStoryIteration({
+    summary: fixture.summary,
+    state: fixture.state,
+    batch: { chapters: fixture.chapters }
+  } as any, [], ownerUserId);
+}
+
+/**
+ * `createContinuationJob` used to read `stateStore.ts`'s transient snapshot
+ * cache (`getTransientStorySnapshot`) before its own auth/ownership check
+ * ever ran, and that cache was keyed only by `storyId` — no owner concept at
+ * all. A signed-in caller who supplied only *another* user's `storyId`, with
+ * no `storyState`/`previouslyGeneratedChapters` of their own, had the cached
+ * owner's title, chapters, and continuity state silently folded into the
+ * caller's own job. This proves the route now refuses that request instead
+ * of ever calling the engine with someone else's story.
+ */
+async function testContinuationJobCannotReadAnotherOwnersTransientSnapshot(): Promise<void> {
+  nonDurableStoryLabJobStore.reset();
+  resetTransientStorySnapshots();
+  setMockRuntime();
+
+  const victimStoryId = 'story_victim_owned';
+  seedOwnedTransientSnapshot(victimStoryId, owner.userId);
+
+  const attacker: AuthUser = { userId: 'user_attacker', email: 'attacker@example.com' };
+  let engineCalled = false;
+  const handler = createStoryLabJobsRouteHandler({
+    authPort: createStaticAuthPort(attacker),
+    continueStory: async input => {
+      engineCalled = true;
+      return realContinueStoryLab(input);
+    }
+  });
+
+  const response = new FakeResponse();
+  await handler(createRequest('POST', {
+    kind: 'continuation',
+    continuation: {
+      storyId: victimStoryId,
+      chapterBatchSize: 1
+    }
+  }), response);
+
+  assert(!engineCalled, "the engine must never run against another owner's cached story");
+  assert(response.statusCode === 400, `a caller with no state of their own for someone else's story should be refused, got ${response.statusCode}`);
+  const body = response.body as any;
+  assert(body.error?.code === 'INVALID_REQUEST', 'the refusal should be the ordinary incomplete-continuation error');
+
+  resetTransientStorySnapshots();
+}
+
+/**
+ * The other side of the same fix: the caller who actually owns the cached
+ * snapshot must still be able to continue their story by `storyId` alone,
+ * the way the transient-snapshot fallback has always been meant to work.
+ */
+async function testContinuationJobStillReadsTheOwnersOwnTransientSnapshot(): Promise<void> {
+  nonDurableStoryLabJobStore.reset();
+  resetTransientStorySnapshots();
+  setMockRuntime();
+
+  const storyId = 'story_owner_owned';
+  seedOwnedTransientSnapshot(storyId, owner.userId);
+
+  let capturedInput: StoryContinuationSeam['input'] | null = null;
+  const handler = createStoryLabJobsRouteHandler({
+    authPort: createStaticAuthPort(owner),
+    continueStory: async input => {
+      capturedInput = input;
+      return realContinueStoryLab(input);
+    }
+  });
+
+  const response = new FakeResponse();
+  await handler(createRequest('POST', {
+    kind: 'continuation',
+    continuation: {
+      storyId,
+      chapterBatchSize: 1
+    }
+  }), response);
+
+  assert(response.statusCode === 200, `the snapshot's own owner should still be able to continue by storyId alone, got ${response.statusCode}`);
+  assert(capturedInput !== null, 'the engine should have been called');
+  assert(capturedInput!.previouslyGeneratedChapters.length === 1, "the owner's own cached chapter should have been used");
+
+  resetTransientStorySnapshots();
+}
+
 async function run(): Promise<void> {
   await testGenesisJobCompletesInMockMode();
   await testEventsReplaySnapshotsAndClose();
@@ -850,6 +950,8 @@ async function run(): Promise<void> {
   await testContinuationJobFoldsContentBoundariesWhenHeatContractProvided();
   await testContinuationJobRefusesWhenBoundariesHaveNoHeatContractToJoin();
   await testContinuationJobProceedsWithNoHeatContractAndNoStoredBoundaries();
+  await testContinuationJobCannotReadAnotherOwnersTransientSnapshot();
+  await testContinuationJobStillReadsTheOwnersOwnTransientSnapshot();
 
   console.log('Story Lab job route tests passed');
 }

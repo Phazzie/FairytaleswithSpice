@@ -542,7 +542,8 @@ function buildStateDelta(
 }
 
 export function buildGenesisResponse(
-  input: StoryGenerationSeam['input']
+  input: StoryGenerationSeam['input'],
+  callerOwnerUserId?: string
 ): ApiEnvelope<StoryIterationPayload> {
   const storyId = `story-${randomUUID()}`;
   const flavor = resolveCreatureFlavor(input.creature);
@@ -581,7 +582,7 @@ export function buildGenesisResponse(
       retryCount: 0
     }
   };
-  payload.persistence = persistStoryIteration(payload);
+  payload.persistence = persistStoryIteration(payload, [], callerOwnerUserId);
 
   return {
     success: true,
@@ -590,9 +591,10 @@ export function buildGenesisResponse(
 }
 
 export function buildContinuationResponse(
-  input: StoryContinuationSeam['input']
+  input: StoryContinuationSeam['input'],
+  callerOwnerUserId?: string
 ): ApiEnvelope<StoryIterationPayload & { appendedChapterNumbers: number[] }> {
-  const transientSnapshot = getTransientStorySnapshot(input.storyId);
+  const transientSnapshot = getTransientStorySnapshot(input.storyId, callerOwnerUserId);
   const previousChapters = input.previouslyGeneratedChapters.length
     ? input.previouslyGeneratedChapters
     : transientSnapshot?.chapters ?? [];
@@ -637,7 +639,7 @@ export function buildContinuationResponse(
     },
     appendedChapterNumbers: chapters.map(chapter => chapter.chapterNumber)
   };
-  payload.persistence = persistStoryIteration(payload, previousChapters);
+  payload.persistence = persistStoryIteration(payload, previousChapters, callerOwnerUserId);
 
   return {
     success: true,

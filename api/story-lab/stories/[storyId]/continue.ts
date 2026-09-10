@@ -13,7 +13,7 @@ import type { AuthPort } from '../../../_lib/story-lab/auth/authPort';
 import { configuredAuthPort } from '../../../_lib/story-lab/auth/configuredAuthPort';
 import type { StoryLabProfileStore } from '../../../_lib/story-lab/profile/storyLabProfileStore';
 import { createStoryLabCloudStorage } from '../../../_lib/story-lab/storage/storyLabCloudStorageConfig';
-import { loadAuthenticatedContentBoundaries, resolveContinuationHeatContract } from '../../../_lib/story-lab/contentBoundaries';
+import { loadAuthenticatedContentBoundaries, resolveCallerOwnerUserId, resolveContinuationHeatContract } from '../../../_lib/story-lab/contentBoundaries';
 import { withUnhandledRouteFailureLogging } from '../../../_lib/http/withUnhandledRouteFailureLogging';
 
 type ContinueStoryLab = typeof continueStoryLab;
@@ -177,7 +177,13 @@ export function createStoryLabContinuationHandler(
       }
 
       const storyId = routeStoryId || bodyStoryId;
-      const transientSnapshot = storyId ? getTransientStorySnapshot(storyId) : null;
+
+      // Resolved before the transient-snapshot read below, so that read is
+      // scoped to whichever caller is actually asking rather than answering
+      // to any caller who names the same `storyId` — see
+      // `getTransientStorySnapshot`.
+      const callerOwnerUserId = await resolveCallerOwnerUserId(authPort, req);
+      const transientSnapshot = storyId ? getTransientStorySnapshot(storyId, callerOwnerUserId) : null;
 
       const hasChapters = Array.isArray(input.previouslyGeneratedChapters);
       const batchSizeNumber = Number(input.chapterBatchSize);
@@ -264,7 +270,7 @@ export function createStoryLabContinuationHandler(
       // route beside it passes its own: without it the continuation's log lines
       // answer to an id minted in the service, which the caller was never told.
       const payload: ApiResponse<StoryIterationPayload & { appendedChapterNumbers: number[] }> =
-        await continueStory(boundedInput, { requestId });
+        await continueStory(boundedInput, { requestId, callerOwnerUserId });
 
       logInfo(`Story Lab continuation ${payload.success ? 'succeeded' : 'failed'}`, {
         requestId,

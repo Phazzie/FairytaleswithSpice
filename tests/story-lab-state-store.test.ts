@@ -130,10 +130,55 @@ function testRepersistingDoesNotGrowTheStore(): void {
   );
 }
 
+// This store is keyed only by `storyId` — a random UUID minted once per
+// story, never by who wrote it. Every durable sibling store in this codebase
+// (project store, job store) checks an owner on every read; this cache used
+// to check nothing, so a signed-in caller who supplied only another user's
+// `storyId` could read that user's cached title, chapters, and continuity
+// state straight out of it. See `getTransientStorySnapshot`.
+function testReadIsScopedToTheCallerWhoWroteIt(): void {
+  resetTransientStorySnapshots();
+
+  persistStoryIteration(buildPayload('story-owned'), [], 'user-a');
+
+  assert(
+    getTransientStorySnapshot('story-owned', 'user-a') !== null,
+    'the owner who wrote a snapshot should be able to read it back'
+  );
+  assert(
+    getTransientStorySnapshot('story-owned', 'user-b') === null,
+    'a different signed-in caller must not read another owner\'s snapshot'
+  );
+  assert(
+    getTransientStorySnapshot('story-owned') === null,
+    'an anonymous caller must not read a signed-in owner\'s snapshot'
+  );
+}
+
+// A fully anonymous deployment (no auth provider configured) has never
+// supplied an owner id on either side, and must see no behavior change: an
+// anonymous write is still readable by an anonymous read of the same story.
+function testAnonymousWritesStayReadableByAnonymousCallers(): void {
+  resetTransientStorySnapshots();
+
+  persistStoryIteration(buildPayload('story-anonymous'));
+
+  assert(
+    getTransientStorySnapshot('story-anonymous') !== null,
+    'an anonymously-written snapshot should stay readable by an anonymous caller'
+  );
+  assert(
+    getTransientStorySnapshot('story-anonymous', 'user-a') === null,
+    'a signed-in caller must not read a snapshot an anonymous caller wrote'
+  );
+}
+
 function main(): void {
   testTheStoreIsBounded();
   testReadingAStoryKeepsIt();
   testRepersistingDoesNotGrowTheStore();
+  testReadIsScopedToTheCallerWhoWroteIt();
+  testAnonymousWritesStayReadableByAnonymousCallers();
 
   resetTransientStorySnapshots();
   console.log('Story Lab transient state store tests passed');

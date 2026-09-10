@@ -40,7 +40,7 @@ import {
 } from './storyLabJobStoreConfig';
 import { createStoryLabCloudStorage } from '../storage/storyLabCloudStorageConfig';
 import type { StoryLabProfileStore } from '../profile/storyLabProfileStore';
-import { loadAuthenticatedContentBoundaries, resolveContinuationHeatContract, withMergedContentBoundaries } from '../contentBoundaries';
+import { loadAuthenticatedContentBoundaries, resolveCallerOwnerUserId, resolveContinuationHeatContract, withMergedContentBoundaries } from '../contentBoundaries';
 
 type ContinuationJobResult = StoryIterationPayload & { appendedChapterNumbers: number[] };
 type JobResult = StoryIterationPayload | ContinuationJobResult;
@@ -448,8 +448,14 @@ async function createGenesisJob(
     ? { ...parsed.blueprint, heatContract: withMergedContentBoundaries(parsed.blueprint.heatContract, contentBoundaries) }
     : parsed.blueprint;
 
+  // Scopes the snapshot this genesis writes to `stateStore.ts` — see
+  // `getTransientStorySnapshot` — to whichever caller actually asked for it,
+  // independent of `ownerUserId` above (which is `undefined` whenever the
+  // configured job store isn't durable, even for a signed-in caller).
+  const callerOwnerUserId = await resolveCallerOwnerUserId(context.authPort, req);
+
   const result = await runJobWork(
-    () => context.generateGenesis(genesisInput),
+    () => context.generateGenesis(genesisInput, { callerOwnerUserId }),
     'genesis',
     job.job.jobId,
     requestId
@@ -475,7 +481,13 @@ async function createContinuationJob(
   res: ResponseLike,
   requestId: string
 ): Promise<void> {
-  const normalized = normalizeContinuationInput(request.continuation);
+  // Resolved before the transient-snapshot fallback inside
+  // `normalizeContinuationInput` is read: that read has to be scoped to
+  // whichever caller is actually asking, not to whatever `ownerUserId` the
+  // job store later resolves (which is `undefined` for a non-durable store
+  // even when the caller is signed in) — see `getTransientStorySnapshot`.
+  const callerOwnerUserId = await resolveCallerOwnerUserId(context.authPort, req);
+  const normalized = normalizeContinuationInput(request.continuation, callerOwnerUserId);
   if (!normalized) {
     sendJson(res, 400, invalidRequest(
       'Continuation jobs require storyId, storyState or transient snapshot, previous chapters or transient snapshot, '
@@ -540,7 +552,7 @@ async function createContinuationJob(
   const continuationInput = { ...normalized, heatContract: heatContractResolution.heatContract };
 
   const result = await runJobWork(
-    () => context.continueStory(continuationInput),
+    () => context.continueStory(continuationInput, { callerOwnerUserId }),
     'continuation',
     job.job.jobId,
     requestId
@@ -723,14 +735,17 @@ async function requireJobRouteUser(authPort: AuthPort, req: RequestLike, res: Re
   }
 }
 
-function normalizeContinuationInput(input: unknown): StoryContinuationSeam['input'] | null {
+function normalizeContinuationInput(
+  input: unknown,
+  callerOwnerUserId: string | undefined
+): StoryContinuationSeam['input'] | null {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     return null;
   }
 
   const partial = input as Partial<StoryContinuationSeam['input']>;
   const storyId = typeof partial.storyId === 'string' ? partial.storyId.trim() : '';
-  const transientSnapshot = storyId ? getTransientStorySnapshot(storyId) : null;
+  const transientSnapshot = storyId ? getTransientStorySnapshot(storyId, callerOwnerUserId) : null;
   const hasChapters = Array.isArray(partial.previouslyGeneratedChapters);
   const batchSizeNumber = Number(partial.chapterBatchSize);
   const storyState = partial.storyState ?? transientSnapshot?.state;

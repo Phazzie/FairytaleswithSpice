@@ -13,6 +13,11 @@ export interface StoredStorySnapshot {
   state: StoryStateSnapshot;
   chapters: GeneratedChapter[];
   updatedAt: string;
+  /**
+   * The signed-in caller who wrote this snapshot, or `undefined` when it was
+   * written by a caller with no session — see `getTransientStorySnapshot`.
+   */
+  ownerUserId?: string;
 }
 
 /**
@@ -80,9 +85,42 @@ export function resetTransientStorySnapshots(): void {
   transientSnapshots.clear();
 }
 
-export function getTransientStorySnapshot(storyId: string): StoredStorySnapshot | null {
+/**
+ * Reads back a snapshot for `storyId`, scoped to the caller who is asking for
+ * it.
+ *
+ * This store is keyed only by `storyId` — a random UUID minted once per story
+ * (`mockData.ts`), never by who wrote it — and every durable sibling this
+ * process has (`postgresStoryProjectStore.ts`, `postgresStoryLabJobStore.ts`,
+ * `inMemoryStoryProjectStore.ts` via `authorizeProjectAccess.ts`) checks an
+ * owner on every read. This one did not, and `createContinuationJob`
+ * (`jobRouteHandlers.ts`) reads it *before* the route's own auth/ownership
+ * check ever runs: a signed-in caller who supplied only another user's
+ * `storyId` — omitting `storyState`/`previouslyGeneratedChapters` — had this
+ * function hand back that other user's cached title, prior chapters, and
+ * continuity state, which the route then fed to the generator and returned
+ * inside the *caller's own* job. The route requires sign-in and looks
+ * protected; the leak came through a fallback nobody had scoped to an owner.
+ *
+ * `callerOwnerUserId` is the asking caller's own id (`undefined` for a caller
+ * with no session — resolved via `resolveCallerOwnerUserId`, a soft lookup
+ * that never throws). A mismatch against the stored `ownerUserId` — including
+ * a signed-in caller reading a snapshot with no recorded owner, or vice versa
+ * — is answered exactly like "no snapshot exists", never a distinguishable
+ * "forbidden": the caller falls back to supplying their own state, the same
+ * outcome an expired/evicted snapshot already produces today. Comparing with
+ * `??` rather than `===` is what keeps two anonymous callers (`undefined` on
+ * both sides) matching each other exactly as they always have, so a fully
+ * anonymous deployment — no `STORY_LAB_AUTH_PROVIDER` configured, every caller
+ * unauthenticated — sees no behavior change at all.
+ */
+export function getTransientStorySnapshot(storyId: string, callerOwnerUserId?: string): StoredStorySnapshot | null {
   const snapshot = transientSnapshots.get(storyId);
   if (!snapshot) {
+    return null;
+  }
+
+  if ((snapshot.ownerUserId ?? null) !== (callerOwnerUserId ?? null)) {
     return null;
   }
 
@@ -93,7 +131,8 @@ export function getTransientStorySnapshot(storyId: string): StoredStorySnapshot 
 
 export function persistStoryIteration(
   payload: StoryIterationPayload,
-  previousChapters: GeneratedChapter[] = []
+  previousChapters: GeneratedChapter[] = [],
+  ownerUserId?: string
 ): StoryPersistenceReceipt {
   const persistedAt = new Date().toISOString();
   const chapterMap = new Map<string, GeneratedChapter>();
@@ -110,7 +149,8 @@ export function persistStoryIteration(
     summary: clone(payload.summary),
     state: clone(payload.state),
     chapters: Array.from(chapterMap.values()).map(chapter => clone(chapter)),
-    updatedAt: persistedAt
+    updatedAt: persistedAt,
+    ownerUserId
   });
   evictLeastRecentlyUsedSnapshots();
 

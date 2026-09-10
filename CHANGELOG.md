@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ***WORST TO BEST*** Story Lab transient story cache — no per-owner access control, reachable through an authenticated route (September 10, 2026)
+
+This one is a broken-access-control fix, not the dead-code/memory-bound class this
+routine has fixed so far.
+
+- `stateStore.ts`'s in-memory transient snapshot cache (`getTransientStorySnapshot`)
+  is keyed only by `storyId` — a random UUID minted once per story — with no owner
+  concept at all. Every durable sibling store in this codebase
+  (`postgresStoryProjectStore.ts`, `postgresStoryLabJobStore.ts`,
+  `inMemoryStoryProjectStore.ts` via `authorizeProjectAccess.ts`) checks an owner
+  on every read, including the very job route this bug sits in, for its own job
+  rows. This cache was the one exception.
+- `createContinuationJob` (`jobRouteHandlers.ts`) read this cache via
+  `normalizeContinuationInput` *before* the route's own auth/ownership check ever
+  ran. A signed-in caller who supplied only another user's `storyId` and a
+  `chapterBatchSize` — omitting `storyState`/`previouslyGeneratedChapters` — had
+  that other user's cached title, prior chapters, and continuity state (tracked
+  characters, open threads) silently folded into their own request, a chapter
+  generated from it, and the result handed back inside the *caller's own* job.
+  The route requires sign-in and looks protected; the leak came through an
+  unowned fallback nobody had scoped. The same root cause was reachable
+  unauthenticated too, through the direct `/api/story-lab/stories/:storyId/continue`
+  route. `storyId` is a random UUID, so this needed a leaked/known id rather than
+  being guessable — but it was still a real cross-account read through a route
+  that requires no such access.
+- `StoredStorySnapshot` now carries the `ownerUserId` of whoever wrote it (or
+  `undefined` for a caller with no session). `getTransientStorySnapshot` refuses a
+  read whose caller doesn't match — answered exactly like "no snapshot exists",
+  never a distinguishable "forbidden" — comparing with `??` so two anonymous
+  callers still match each other exactly as before: a fully anonymous deployment
+  (no `STORY_LAB_AUTH_PROVIDER` configured) sees no behavior change at all. The
+  caller's own id is resolved via a new `resolveCallerOwnerUserId` (a soft
+  `getCurrentUser` lookup, never a hard gate) and threaded through
+  `StoryLabEngineOptions` into both the job route and the two direct genesis/
+  continuation routes, and into the mock-mode builders in `mockData.ts` so a
+  keyless/test deployment scopes the same way.
+- Tests: `tests/story-lab-state-store.test.ts` — a snapshot's own owner can read
+  it back, a different signed-in caller cannot, an anonymous caller cannot read a
+  signed-in owner's snapshot, and an anonymous write stays readable by an
+  anonymous caller. `tests/story-lab-job-routes.test.ts` — a signed-in caller
+  supplying only another owner's `storyId` is refused (400, engine never called)
+  rather than receiving that owner's story, while the snapshot's own owner can
+  still continue by `storyId` alone.
+
 ### ***WORST TO BEST*** Story Lab non-durable project storage — an unbounded in-memory `Map` grew forever (September 9, 2026)
 
 - `NonDurableInMemoryStoryProjectStore.saveProject()` wrote every saved Story Lab project into a
