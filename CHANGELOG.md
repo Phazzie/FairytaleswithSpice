@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ***WORST TO BEST*** HTTP response security headers — a public app with none at all, beyond a bare `nosniff` on JSON envelopes (September 10, 2026)
+
+- Neither real deployment target (the Express/Docker server this README calls the
+  recommended one, run via `.do/app.yaml` on Digital Ocean, and the legacy static +
+  serverless-function Vercel deployment) set a `Content-Security-Policy`,
+  `X-Frame-Options`, `Strict-Transport-Security`, `Referrer-Policy`, or
+  `Permissions-Policy` on any response. The only header sent anywhere was a bare
+  `X-Content-Type-Options: nosniff` on JSON error/API envelopes, hardcoded twice
+  (`expressApiRoutes.ts` and `withUnhandledRouteFailureLogging.ts`).
+- This is a public, consumer-facing app that renders AI-generated HTML straight into
+  the DOM (`[innerHTML]="getSafeHtml(chapter.htmlContent)"` in `app.html`), with
+  Angular's `DomSanitizer` as the only layer standing between a sanitizer bypass and
+  script execution — no CSP existed as defense-in-depth behind it. The page was also
+  fully frameable (no `frame-ancestors`/`X-Frame-Options`) and had no HSTS.
+- Added `api/_lib/http/securityResponseHeaders.ts`: one `SECURITY_RESPONSE_HEADERS`
+  list and an `applySecurityResponseHeaders(res)` that sets all of them, replacing the
+  two duplicated `nosniff` literals. Called at the top of
+  `withUnhandledRouteFailureLogging`'s wrapped handler — already on every
+  `api/**/*.ts` default export on both deployments — so every API response, success or
+  failure, now carries the full set. A global `app.use` in `story-generator/src/server.ts`
+  applies the same headers to SSR-rendered pages and static assets on the Digital Ocean
+  deployment; a matching `headers` block in `vercel.json` covers the Vercel deployment's
+  CDN-served static bundle, which never runs any Node code.
+- CSP is `script-src 'self'` / `connect-src 'self'` (no external script CDN or
+  client-side third-party API calls other than this app's own), `style-src 'self'
+  'unsafe-inline'` (Angular's emulated view encapsulation injects `<style>` tags at
+  runtime), `img-src 'self' https: data:` (xAI-generated image URLs are opaque and
+  can't be pinned to one host; mock mode uses picsum.photos), `media-src 'self' data:`
+  (audio narration ships as an inline `data:` WAV), `object-src 'none'`,
+  `frame-ancestors 'none'`.
+- Known, deliberate gap, documented on the CSP itself: `auth.service.ts` dynamically
+  imports `@clerk/clerk-js` once a deployment's `/account/auth-config` reports a
+  configured Clerk `publishableKey` — no deployment today (including this repo's own
+  `.do/app.yaml`) sets one, so this never fires in practice, but the day one does,
+  Clerk's client will call out to that application's own Frontend API host, which a
+  `connect-src`/`frame-src` of `'self'` would then block. Not solved here — that host
+  varies per Clerk application — but flagged so it's the first thing checked rather
+  than a silent sign-in failure.
+- Tests: `tests/security-response-headers.test.ts` (every header set correctly, safe on
+  a headerless response double, `vercel.json`'s block matches the shared list
+  byte-for-byte so the two declarations can't drift the way the two old `nosniff`
+  literals had); extended `tests/with-unhandled-route-failure-logging.test.ts` to assert
+  the full header set on both the success and the generic-500 path.
+- Verified: production build, headless-Chromium load of the built SSR page with the
+  real CSP applied — zero console errors, zero CSP violations — and `curl` against both
+  a page and an API route confirming every header.
+
 ### ***WORST TO BEST*** Proving Grounds / debug panel — no access control at all on a route that triggers billed AI generation (September 10, 2026)
 
 - `/proving-grounds` (`app.routes.ts`) had no `canActivate` guard whatsoever, and no

@@ -13,6 +13,7 @@ import {
   registerApiRoutes
 } from '../../api/_lib/http/expressApiRoutes';
 import { logUnhandledProcessFailure } from '../../api/_lib/http/unhandledProcessFailureLogger';
+import { applySecurityResponseHeaders } from '../../api/_lib/http/securityResponseHeaders';
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
 
@@ -20,6 +21,16 @@ const app = express();
 const angularApp = new AngularNodeAppEngine();
 
 // ==================== MIDDLEWARE ====================
+
+// Every response this process sends, API or page, ahead of anything else:
+// `withUnhandledRouteFailureLogging` already puts these same headers on every
+// `api/**/*.ts` response on both deployments, but the SSR-rendered pages and
+// the static bundle `express.static` serves further down never go through an
+// `api/` handler at all on this deployment — this is what reaches those too.
+app.use((_req: Request, res: Response, next: NextFunction) => {
+  applySecurityResponseHeaders(res);
+  next();
+});
 
 // CORS for the API surface, through the same origin allow-list the serverless
 // routes use: `STORY_LAB_ALLOWED_ORIGINS`, `ALLOWED_ORIGINS`, and

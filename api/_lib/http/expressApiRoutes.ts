@@ -2,6 +2,7 @@
 
 import { logCritical } from '../utils/logger';
 import { readRequestCorrelationId } from './requestCorrelationId';
+import { applySecurityResponseHeaders } from './securityResponseHeaders';
 import healthHandler from '../../health';
 import exportSaveHandler from '../../export/save';
 import imageGenerateHandler from '../../image/generate';
@@ -306,11 +307,12 @@ function sendApiEnvelope(res: any, status: number, body: unknown): void {
   // Defence in depth for the whole envelope path, not for the echo that was
   // removed above: `application/json` only keeps a body from being read as
   // markup while something honours it, and a browser that content-sniffs does
-  // not. `nosniff` is what makes the declared type binding, so a response here
-  // cannot be turned into a document by any later change to what these
-  // envelopes carry. Express's own `json escape` setting is the other half and
-  // is off by default, so `<` in a JSON string is written through literally.
-  res.setHeader?.('X-Content-Type-Options', 'nosniff');
+  // not. `nosniff` (among the rest of `applySecurityResponseHeaders`) is what
+  // makes the declared type binding, so a response here cannot be turned into
+  // a document by any later change to what these envelopes carry. Express's
+  // own `json escape` setting is the other half and is off by default, so `<`
+  // in a JSON string is written through literally.
+  applySecurityResponseHeaders(res);
 
   if (typeof res?.status === 'function' && typeof res.status(status)?.json === 'function') {
     res.status(status).json(body);

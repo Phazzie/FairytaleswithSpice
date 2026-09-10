@@ -14,6 +14,7 @@
 
 import assert from 'node:assert/strict';
 import { withUnhandledRouteFailureLogging } from '../api/_lib/http/withUnhandledRouteFailureLogging';
+import { SECURITY_RESPONSE_HEADERS } from '../api/_lib/http/securityResponseHeaders';
 import { logger } from '../api/_lib/utils/logger';
 
 class FakeResponse {
@@ -62,6 +63,10 @@ async function testPassesThroughANormallyHandledRequest(): Promise<void> {
 
   assert.equal(res.statusCode, 200, 'a handler that answers normally should be untouched');
   assert.deepEqual(res.body, { success: true });
+
+  for (const header of SECURITY_RESPONSE_HEADERS) {
+    assert.equal(res.headers[header.key], header.value, `${header.key} should be set on a normal 200 response`);
+  }
 }
 
 async function testLogsAndAnswers500OnASynchronousThrow(): Promise<void> {
@@ -81,6 +86,10 @@ async function testLogsAndAnswers500OnASynchronousThrow(): Promise<void> {
   const critical = logger.getRecentLogs(10, 'critical').find(entry => entry.message === 'Unhandled API route failure');
   assert.ok(critical, 'a synchronous throw should be logged at critical severity');
   assert.equal(critical?.error?.message, 'bug before the handler\'s own try block');
+
+  for (const header of SECURITY_RESPONSE_HEADERS) {
+    assert.equal(res.headers[header.key], header.value, `${header.key} should still be set on the generic 500`);
+  }
 }
 
 async function testLogsAndAnswers500OnARejectedPromise(): Promise<void> {

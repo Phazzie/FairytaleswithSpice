@@ -36,6 +36,7 @@
 // value — echoed back to the caller: also fixed below.
 import { logCriticalAndFlush } from '../utils/logger';
 import { readRequestCorrelationId, settleRequestCorrelationId } from './requestCorrelationId';
+import { applySecurityResponseHeaders } from './securityResponseHeaders';
 
 export type ApiRouteHandler = (req: any, res: any) => unknown;
 
@@ -61,7 +62,7 @@ function sendGenericFailureEnvelope(res: any): void {
     return;
   }
 
-  res.setHeader?.('X-Content-Type-Options', 'nosniff');
+  applySecurityResponseHeaders(res);
   if (typeof res?.status === 'function' && typeof res.status(500)?.json === 'function') {
     res.status(500).json({
       success: false,
@@ -121,6 +122,12 @@ async function handleEscapedFailure(req: any, res: any, error: unknown): Promise
  */
 export function withUnhandledRouteFailureLogging(handler: ApiRouteHandler): ApiRouteHandler {
   return async function wrappedHandler(req: any, res: any): Promise<unknown> {
+    // Before the handler runs, not only on the failure paths below: this
+    // wrapper sits on every `api/**/*.ts` default export on both deployments
+    // (Vercel invokes them directly; `expressApiRoutes.ts` mounts the same
+    // default exports on Express), so this is the one place that reaches
+    // every API response, successful ones included, on both.
+    applySecurityResponseHeaders(res);
     let result: unknown;
 
     try {
