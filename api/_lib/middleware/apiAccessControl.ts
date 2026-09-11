@@ -22,6 +22,8 @@ import { authenticateRequest } from './security';
 import { createRateLimitStoreConfig } from './rateLimitStoreConfig';
 import type { RateLimitStore } from './rateLimitStorePort';
 import { logError } from '../utils/logger';
+import { readClerkSessionToken } from '../story-lab/auth/clerkAuthPort';
+import { createClerkSessionVerifierFromEnv } from '../story-lab/auth/clerkSessionVerifier';
 
 /**
  * Looser than `security.ts`'s own `AuthenticatedRequest`: every route handler
@@ -57,6 +59,11 @@ export type ApiAccessControlResult =
  * caller that receives `{ allowed: false }` has already had its response
  * sent and must return without doing any further work.
  *
+ * When `API_KEYS` is configured, a Clerk session token sent via
+ * `X-Story-Lab-Session` header (or `__session` cookie) is accepted as an
+ * alternative credential — so the browser frontend can call paid routes
+ * while `API_KEYS` is set, as long as the caller holds a valid Clerk session.
+ *
  * `rateLimitStore` is normally left unset — the configured store
  * (`RATE_LIMIT_STORE`, default in-memory) is resolved fresh per call, the
  * same way `createStoryLabJobStoreConfig()` is resolved fresh per job-route
@@ -75,7 +82,16 @@ export async function enforceApiAccessControl(
     headers: req.headers,
     body: req.body
   });
-  if (!auth.authenticated) {
+  if (auth.authenticated) {
+    return completeAccessControl(req, res, endpoint, limits, auth.userId as string, rateLimitStore);
+  }
+
+  // `authenticateRequest` failed. When `API_KEYS` is not configured, fail closed:
+  // there is no valid credential for this route without an API key.
+  // When `API_KEYS` IS configured, try Clerk session as a fallback so the browser
+  // frontend (which sends a Clerk token via `X-Story-Lab-Session`) can still reach
+  // paid routes without an API key.
+  if (!process.env['API_KEYS']?.trim()) {
     res.status(401).json({
       success: false,
       error: auth.error
@@ -83,19 +99,44 @@ export async function enforceApiAccessControl(
     return { allowed: false };
   }
 
+  // `API_KEYS` is configured and the request had no valid API key.
+  // Check for a Clerk session token as an alternative credential.
+  const clerkVerifier = createClerkSessionVerifierFromEnv(process.env);
+  if (clerkVerifier) {
+    const clerkToken = readClerkSessionToken(req as any);
+    if (clerkToken) {
+      try {
+        const session = await clerkVerifier(clerkToken, req as any);
+        if (session) {
+          return completeAccessControl(req, res, endpoint, limits, session.userId, rateLimitStore);
+        }
+      } catch {
+        // Clerk verification threw — treat as a failed verification, fall through to 401.
+      }
+    }
+  }
+
+  res.status(401).json({
+    success: false,
+    error: auth.error
+  });
+  return { allowed: false };
+}
+
+async function completeAccessControl(
+  req: ApiAccessControlRequest,
+  res: ApiAccessControlResponse,
+  endpoint: string,
+  limits: ApiRateLimitConfig,
+  userId: string,
+  rateLimitStore?: RateLimitStore
+): Promise<ApiAccessControlResult> {
   const store = rateLimitStore ?? createRateLimitStoreConfig().store;
   if (!store || !store.isConfigured()) {
-    // Only reachable when a deployment explicitly opts into
-    // `RATE_LIMIT_STORE=postgres` and misconfigures `DATABASE_URL` — the
-    // default `memory` mode is always configured. Failing closed here
-    // matches `resolveJobStoreOrRespond` in `jobRouteHandlers.ts`: a paid
-    // route with no working budget enforcement must refuse the request, not
-    // silently let it through unthrottled.
     respondRateLimitStoreUnavailable(res);
     return { allowed: false };
   }
 
-  const userId = auth.userId as string;
   let rateLimit;
   try {
     rateLimit = await store.consume({
@@ -105,62 +146,16 @@ export async function enforceApiAccessControl(
       windowMs: limits.windowMs
     });
   } catch (error) {
-    // A configured store can still fail per-request (a dropped Postgres
-    // connection, a query error) — `PostgresRateLimitStore` already logs the
-    // underlying error before throwing, so this only needs to turn "the
-    // store just failed" into the same fail-closed response as "the store
-    // was never configured." Without this, the exception would bubble past
-    // this function as an unhandled rejection and the route would answer a
-    // generic 500 instead of the deliberate 503 this guard exists to give.
     logError('Rate limit store failed to answer consume()', error, { endpoint });
     respondRateLimitStoreUnavailable(res);
     return { allowed: false };
   }
 
-  // `X-RateLimit-Limit` is what makes `X-RateLimit-Remaining` a fraction rather
-  // than a bare number. The three headers are one family and always have been —
-  // `SECURITY_FIXES_QUICK_REFERENCE.md` documents all three at this call site —
-  // but only two were sent, so a client reading `X-RateLimit-Remaining: 3` could
-  // not tell whether it had spent a seventh of its budget or two thirds of it.
-  // The budget is not discoverable any other way: it is per route and per tier,
-  // and nothing in the response said what this route's was.
   res.setHeader('X-RateLimit-Limit', limits.maxRequests.toString());
   res.setHeader('X-RateLimit-Remaining', rateLimit.remaining.toString());
-  // Epoch *seconds*, which is the only form anything outside this app reads.
-  //
-  // `checkRateLimit` reports its reset instant in milliseconds, because that is
-  // what `Date.now()` returns, and the value went onto the header unconverted:
-  // `X-RateLimit-Reset: 1787012345678`. Read as the header is defined — GitHub,
-  // Stripe, and every generated client that knows the name treat it as a UTC
-  // epoch in seconds — that is a date some fifty thousand years out, so a client
-  // backing off until the reset never came back at all, and one merely
-  // displaying it showed the reader a year in the seven digits. No convention
-  // anywhere uses milliseconds here.
-  //
-  // This is the same reading `Retry-After` below already gets, and the reason
-  // that header was added: the parts of a rate-limit answer a caller acts on
-  // have to be spelled the way callers spell them. `error.resetTime` in the body
-  // is unchanged and stays in milliseconds — it is this API's own field, read by
-  // this app, and a client that wants the instant rather than the delay can have
-  // it there.
   res.setHeader('X-RateLimit-Reset', rateLimitResetSeconds(rateLimit.resetTime).toString());
 
   if (!rateLimit.allowed) {
-    // `Retry-After` is the only part of this answer a caller can act on without
-    // knowing the shape of the body. Every HTTP client, proxy, and retry helper
-    // reads it; nothing but this app reads `error.resetTime`, and the two
-    // `X-RateLimit-*` headers beside it are absolute epoch milliseconds, so a
-    // client has to trust its own clock against the server's to turn either one
-    // into a delay. So a 429 from here told an ordinary caller nothing at all
-    // about when to come back, and the retry it would guess at is the one this
-    // limit exists to prevent — on routes whose budget is ten requests per
-    // fifteen minutes, the guess is wrong by minutes.
-    //
-    // Whole seconds, and never below one: RFC 9110 defines the delta-seconds
-    // form as a non-negative integer, and a `0` reads as "retry immediately",
-    // which is exactly what a caller at its limit must not do. A window that
-    // has expired between the check above and this line is the only way to get
-    // there, and one second is the honest answer for it.
     res.setHeader('Retry-After', String(retryAfterSeconds(rateLimit.resetTime)));
     res.status(429).json({
       success: false,
