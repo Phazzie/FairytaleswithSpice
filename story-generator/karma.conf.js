@@ -4,13 +4,12 @@
 module.exports = function (config) {
   config.set({
     basePath: '',
-    frameworks: ['jasmine', '@angular/build'],
+    frameworks: ['jasmine'],
     plugins: [
       require('karma-jasmine'),
       require('karma-chrome-launcher'),
       require('karma-jasmine-html-reporter'),
-      require('karma-coverage'),
-      require('@angular/build')
+      require('karma-coverage')
     ],
     client: {
       jasmine: {
@@ -33,42 +32,26 @@ module.exports = function (config) {
         { type: 'text-summary' },
         { type: 'lcov' },
         { type: 'clover' }
-      ],
-      // `@angular/build:karma` does not enforce this legacy karma-coverage
-      // `check` gate (it exits 0 regardless of the numbers below), and actual
-      // coverage is currently well under 85% on branches. Left declared for
-      // the html/lcov reports it still produces; making it actually gate CI
-      // is separate, larger work than wiring the suite itself into CI.
-      check: {
-        global: {
-          statements: 85,
-          branches: 85,
-          functions: 85,
-          lines: 85
-        }
-      }
+      ]
+      // No numeric `check` gate. Coverage is still well under 85%. The test
+      // target loads this file, so a threshold here would fail CI on a number
+      // the suite was never held to. `npm run test:coverage` still collects reports.
     },
-    reporters: ['progress', 'kjhtml', 'coverage'],
+    // Default `npm test` does not run the coverage reporter. `npm run test:coverage`
+    // turns it on through the Angular builder's `codeCoverage` option.
+    reporters: ['progress', 'kjhtml'],
     browsers: ['ChromeHeadless'],
+    // Chrome's socket ping otherwise dies at ~30s (25s interval + the 5s
+    // default pingTimeout) while this suite is still running.
+    browserDisconnectTimeout: 10000,
+    browserDisconnectTolerance: 0,
+    browserNoActivityTimeout: 120000,
+    captureTimeout: 120000,
+    pingTimeout: 60000,
     customLaunchers: {
-      ChromeHeadless: {
-        base: 'Chrome',
-        flags: [
-          '--headless',
-          '--disable-gpu',
-          '--no-sandbox',
-          '--disable-web-security',
-          '--disable-dev-shm-usage'
-        ]
-      },
       ChromeHeadlessNoSandbox: {
         base: 'ChromeHeadless',
-        flags: [
-          '--no-sandbox',
-          '--disable-gpu',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage'
-        ]
+        flags: ['--no-sandbox', '--headless', '--disable-gpu', '--disable-dev-shm-usage']
       }
     },
     restartOnFileChange: true

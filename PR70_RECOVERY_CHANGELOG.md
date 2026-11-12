@@ -4,6 +4,18 @@ Created: 2026-05-26 00:12 EDT
 
 This is the chronological work log for the PR #70 recovery. It should capture commands, decisions, self-review notes, validation results, and anything that changes the plan.
 
+## 2026-11-12 UTC - Origin Depot CI alongside the GitHub recovery workflow
+
+GitHub Actions is billing-locked for this account. CI for the detach move lives in `.depot/workflows/ci.yml` (`depot-ubuntu-24.04`, Node 20) and does not delete `.github/workflows/recovery-ci.yml`.
+
+The `verify` job keeps the recovery workflow's two locked `npm ci` installs, the non-test preflight checks, and the `vercel.json` shape check, then runs the repo's real commands once each: root `npm test` (`test:all`), `npm run build`, `npm run build:verify`, `story-generator` `npm test`, and `story-generator` `npm run build:prod`. Pull requests also run `scripts/ai-review.mjs`, which posts with `origin pr comment <PR_NUMBER> --body-file ... --edit-last --create-if-none` and exits 0 when `XAI_API_KEY` or the Origin CLI is missing.
+
+`story-generator` `npm test` was `ng test` (watch mode). It now passes `--watch=false --browsers=ChromeHeadlessNoSandbox`. The test target points at `karma.conf.js` and raises Karma `pingTimeout` to 60s, because `@angular/build:karma` was ignoring that file and Chrome's socket ping dropped the browser at about 30s. The spec `retries the sign-in-time profile fetch under the current identity instead of applying a stale response` called `fixture.detectChanges()` on the full `App` template and hung the Karma browser before the suite could finish. It now drives `syncStoryLabProfileDefaultsWithAuthState` directly, the method that constructor effect forwards into, which is the same split the cloud-library account-switch spec already uses. No lockfile drift. No ESLint script to run.
+
+Mapping, dropped GitHub-only triggers, the DigitalOcean `deploy_on_push` retarget, and Depot secrets are in `docs/origin-ci.md`.
+
+Local validation on Node v22 (Depot job pins Node 20, matching `recovery-ci.yml`): `npm ci` at the root and in `story-generator`; `scripts/recovery/preflight.sh --skip-status --skip-tests --skip-build`; `vercel.json` shape check; root `npm test` (`test:all`, including `test:ai-review`); `npm run build` and `npm run build:verify`; `story-generator` `npm test` (373/373); `story-generator` `npm run build:prod`. `node scripts/ai-review.mjs` with `XAI_API_KEY` unset exits 0. Production build emitted the existing bundle budget warnings and still exited 0.
+
 ## 2026-09-09 UTC - Story Lab durable job store: job-row and event-log writes made atomic, addressing #125 (PR #357, in review)
 
 **Status note:** as of this entry, PR #357 is in review and not yet merged to `main`. This entry describes what that PR does; #125 and the checklist items it addresses in `STORY_LAB_LIVING_BOOK_AND_DURABLE_JOBS_EXEC_PLAN.md`/`STORY_LAB_COMPLETION_HARDENING_EXEC_PLAN.md` stay open until it actually merges (Codex review finding on this PR itself — the first draft of those doc updates said "closed"/"merged" prematurely; corrected there and here).
