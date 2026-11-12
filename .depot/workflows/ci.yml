@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    name: Validate recovery build
+    runs-on: depot-ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            story-generator/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Install Angular dependencies
+        working-directory: story-generator
+        run: npm ci --no-audit --no-fund
+
+      - name: Recovery preflight (typecheck, function count, whitespace)
+        run: scripts/recovery/preflight.sh --skip-status --skip-tests --skip-build
+
+      - name: Check Vercel configuration
+        run: |
+          test -f vercel.json
+          node -e "const fs=require('fs'); const config=JSON.parse(fs.readFileSync('vercel.json','utf8')); if (!config.buildCommand || !config.outputDirectory) { throw new Error('vercel.json must define buildCommand and outputDirectory'); }"
+
+      - name: Root test suite
+        run: npm test
+
+      - name: Root build
+        run: npm run build
+
+      - name: Verify Vercel build output
+        run: npm run build:verify
+
+      - name: Angular unit tests
+        working-directory: story-generator
+        run: npm test
+
+      - name: Angular production build
+        working-directory: story-generator
+        run: npm run build:prod
+
+  ai-review:
+    if: github.event_name == 'pull_request'
+    runs-on: depot-ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install root dependencies
+        run: npm ci --no-audit --no-fund
+      - name: AI review unit checks
+        run: node --test scripts/ai-review.test.mjs
+      - name: Grok review
+        env:
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+          # Depot still speaks GitHub Actions syntax. Blank these so a leftover
+          # token cannot send the review to the GitHub API after detach.
+          GITHUB_TOKEN: ""
+          GITHUB_REPOSITORY: ""
+        run: node scripts/ai-review.mjs

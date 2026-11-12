@@ -3676,6 +3676,10 @@ describe('App sign-in-time profile-defaults staleness', () => {
       success: true,
       data: { ownerUserId: 'user-a', storageMode: 'non_durable_memory', projects: [], totalProjectCount: 0 }
     }));
+    storyService.getStoryLabProfile.and.returnValue(of({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'no profile in this test' }
+    }));
 
     await TestBed.configureTestingModule({
       imports: [App, HttpClientTestingModule],
@@ -3694,19 +3698,24 @@ describe('App sign-in-time profile-defaults staleness', () => {
   // and — since this method runs at most once per account — must retry
   // rather than leave that account's defaults never applied for the rest of
   // the session.
+  //
+  // Driven through `syncStoryLabProfileDefaultsWithAuthState` directly.
+  // `fixture.detectChanges()` on this full `App` template hangs the Karma
+  // browser (see the constructor-effect note in `app.ts`), which drops the
+  // suite before the rest of the specs run. The effect's only job is to
+  // forward `isSignedIn()`/`accountId()` into this method.
   it('retries the sign-in-time profile fetch under the current identity instead of applying a stale response', () => {
     const firstResponse = new Subject<ApiResponse<StoryLabUserProfile>>();
     const secondResponse = new Subject<ApiResponse<StoryLabUserProfile>>();
+    // Construction may already have fetched once. Clear that guard so this
+    // case starts from a signed-out baseline, the same way a real epoch
+    // mismatch does inside the method.
+    component.syncStoryLabProfileDefaultsWithAuthState(false, null);
+    storyService.getStoryLabProfile.calls.reset();
     storyService.getStoryLabProfile.and.returnValues(firstResponse.asObservable(), secondResponse.asObservable());
 
-    // Flushes the constructor's own effects' first execution — unlike the
-    // main `describe('App', ...)` suite above, this test asserts on what
-    // that effect actually does (starting the sign-in-time profile fetch),
-    // so the spy's return value has to be in place first.
-    fixture.detectChanges();
+    component.syncStoryLabProfileDefaultsWithAuthState(true, 'user-a');
 
-    // The constructor's own effect already started the first fetch, for the
-    // account signed in at construction.
     expect(storyService.getStoryLabProfile).toHaveBeenCalledTimes(1);
 
     // An ordinary same-account token refresh advances the epoch while that
